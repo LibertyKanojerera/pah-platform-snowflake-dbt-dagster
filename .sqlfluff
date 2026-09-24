@@ -1,0 +1,12 @@
+[sqlfluff]
+templater = dbt
+dialect = snowflake
+max_line_length = 120
+exclude_rules = ST06, RF01
+
+[sqlfluff:templater:dbt]
+project_dir = transform
+profiles_dir = transform
+
+[sqlfluff:rules:capitalisation.keywords]
+capitalisation_policy = lower

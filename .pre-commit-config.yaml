@@ -27,9 +27,11 @@ repos:
         files: ^ingest/
         additional_dependencies: [types-requests]
 
-  - repo: https://github.com/sqlfluff/sqlfluff
-    rev: 3.0.6
+  - repo: local
     hooks:
       - id: sqlfluff-lint
-        files: ^transform/models/
-        additional_dependencies: ['dbt-snowflake', 'sqlfluff-templater-dbt']
+        name: sqlfluff-lint
+        entry: uv run sqlfluff lint
+        language: system
+        files: ^transform/models/.*\.sql$
+        pass_filenames: true
