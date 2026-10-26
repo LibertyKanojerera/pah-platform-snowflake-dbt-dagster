@@ -15,3 +15,18 @@ Decided: sign up again via "Sign up for AWS (advanced)" for a classic root plus
 Next: create the classic AWS account (alternate email or +aws alias), root MFA,
       enable IAM access to billing, $5 budget with 80% actual and 100% forecast
       alerts, region us-east-1. Then install Terraform and the AWS CLI.
+
+
+## S2 - 2026-10-26
+Did: classic AWS account created (036999274035, libertkanojerera@gmail.com),
+     root MFA, IAM access to billing activated, $5 budget with 80% actual and
+     100% forecast alerts, region us-east-1. IAM Identity Center enabled, user
+     liberty with AdministratorAccess permission set, 4h sessions. AWS CLI v2
+     and Terraform installed. aws sts get-caller-identity returns an assumed
+     SSO role, no long-lived keys on disk.
+Deferred: aws configure agent-toolkit (MCP server and skills), revisit around
+     S6/S7 once the IAM and Terraform work is understood first-hand.
+     Old Builder ID project at settings.aws.com still open, close it.
+Next: terraform skeleton in infra/terraform/ with S3 remote state using native
+      S3 locking (use_lockfile = true). Bootstrap with local state, then migrate.
+      Write ADR-011 (AWS as substrate) and ADR-012 (DuckDB-first build order).
