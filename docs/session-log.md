@@ -30,3 +30,15 @@ Deferred: aws configure agent-toolkit (MCP server and skills), revisit around
 Next: terraform skeleton in infra/terraform/ with S3 remote state using native
       S3 locking (use_lockfile = true). Bootstrap with local state, then migrate.
       Write ADR-011 (AWS as substrate) and ADR-012 (DuckDB-first build order).
+
+## S4 - 2026-10-27
+Did: ADR-009 through ADR-012 written and committed. Terraform landing bucket
+     applied: versioning, SSE, public access block, 90-day expiry plus 30-day
+     noncurrent expiry, multipart abort at 7 days. Round-trip write/list/delete
+     verified from the pah-admin role. Key layout documented in architecture.md.
+Decided: plain resources rather than a bucket module. Two buckets differ enough
+     (prevent_destroy vs lifecycle) that a module needs toggles for every
+     difference. Extract if a third appears.
+Next: plan S4, the IAM role Snowflake will assume. Scope the policy to the
+      landing/ prefix only, leave the trust policy principal as a placeholder
+      until DESC INTEGRATION in plan S56, and comment the circular dependency.
