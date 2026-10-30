@@ -42,3 +42,16 @@ Decided: plain resources rather than a bucket module. Two buckets differ enough
 Next: plan S4, the IAM role Snowflake will assume. Scope the policy to the
       landing/ prefix only, leave the trust policy principal as a placeholder
       until DESC INTEGRATION in plan S56, and comment the circular dependency.
+
+## S5 - 2026-10-30
+Did: IAM role pah-platform-snowflake-storage-integration applied. Inline policy
+     read-scoped to landing/ with an s3:prefix condition on ListBucket. Trust
+     policy currently account root; snowflake_iam_user_arn and
+     snowflake_external_id are null variables, so plan S56 is a tfvars change
+     and an apply rather than a code edit. Verified trust policy has no
+     sts:ExternalId condition yet, which is the expected pre-S56 state.
+     ADR register rows 009, 010, 011 updated to Written.
+Next: plan S5, Secrets Manager. One secret for the Snowflake key pair
+      (populated at plan S55), one for Postgres. Refactor config loading so
+      secrets resolve from Secrets Manager when AWS_PROFILE is set and from
+      .env otherwise.
