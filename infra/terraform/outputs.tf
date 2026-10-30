@@ -12,3 +12,11 @@ output "snowflake_storage_integration_role_arn" {
   description = "Pass this to CREATE STORAGE INTEGRATION in Snowflake."
   value       = aws_iam_role.snowflake_storage_integration.arn
 }
+
+output "secret_names" {
+  description = "Secrets Manager containers. Values are populated out-of-band."
+  value = {
+    snowflake_keypair = aws_secretsmanager_secret.snowflake_keypair.name
+    postgres_app      = aws_secretsmanager_secret.postgres_app.name
+  }
+}
