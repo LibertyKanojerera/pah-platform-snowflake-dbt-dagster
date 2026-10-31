@@ -55,3 +55,18 @@ Next: plan S5, Secrets Manager. One secret for the Snowflake key pair
       (populated at plan S55), one for Postgres. Refactor config loading so
       secrets resolve from Secrets Manager when AWS_PROFILE is set and from
       .env otherwise.
+
+## S6 - 2026-10-30
+Did: Secrets Manager containers for snowflake/keypair and postgres/app,
+     7-day recovery window. Values deliberately out of Terraform, since
+     aws_secretsmanager_secret_version writes plaintext into state.
+     ingest/core/config.py resolves from Secrets Manager when AWS_PROFILE is
+     set, .env otherwise; both branches verified to differ. First Python in
+     the repo, so ruff/black/mypy finally ran and Passed rather than Skipped.
+     docs/plan.md committed (it had never been saved to the repo; the README
+     link was broken).
+Fixed: use_secrets_manager used `is not None`, so AWS_PROFILE="" took the AWS
+     branch. Now bool(). Empty-but-set env vars are common in CI.
+Next: plan S6, GitHub Actions OIDC. Identity provider plus a role trusting
+      this repo only, scoped to main and pull requests. Smoke workflow that
+      assumes the role and lists the landing bucket. Closes gate G1.
