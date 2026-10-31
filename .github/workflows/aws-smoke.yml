@@ -7,7 +7,6 @@ on:
   workflow_dispatch:
 
 # id-token: write is what lets the job request an OIDC token.
-# Without it the credentials step fails with a confusing 400.
 permissions:
   id-token: write
   contents: read
@@ -24,7 +23,12 @@ jobs:
           role-to-assume: arn:aws:iam::036999274035:role/pah-platform-github-actions
           aws-region: us-east-1
 
+      # s3api rather than `aws s3 ls`: the latter exits 1 on an empty listing,
+      # so it cannot tell "no objects" from "no access".
       - name: Prove the role works
         run: |
           aws sts get-caller-identity
-          aws s3 ls s3://pah-platform-landing-036999274035/landing/
+          aws s3api list-objects-v2 \
+            --bucket pah-platform-landing-036999274035 \
+            --prefix landing/ \
+            --max-items 10
