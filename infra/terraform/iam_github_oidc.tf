@@ -40,8 +40,8 @@ data "aws_iam_policy_document" "github_actions_assume_role" {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
-        "repo:${var.github_repo}:ref:refs/heads/main",
-        "repo:${var.github_repo}:pull_request",
+        "${local.github_sub}:ref:refs/heads/main",
+        "${local.github_sub}:pull_request",
       ]
     }
   }
@@ -83,4 +83,27 @@ resource "aws_iam_role_policy" "github_actions_landing_read" {
   name   = "landing-read"
   role   = aws_iam_role.github_actions.id
   policy = data.aws_iam_policy_document.github_actions_landing_read.json
+}
+
+variable "github_owner_id" {
+  description = "GitHub owner numeric ID. From the OIDC sub claim, not the UI."
+  type        = string
+  default     = "35557707"
+}
+
+variable "github_repo_id" {
+  description = "GitHub repository numeric ID. From the OIDC sub claim, not the UI."
+  type        = string
+  default     = "1384547718"
+}
+
+locals {
+  github_owner = split("/", var.github_repo)[0]
+  github_name  = split("/", var.github_repo)[1]
+
+  # GitHub switched to immutable subject claims in April 2026: the sub now
+  # carries numeric owner and repo IDs alongside the names, as
+  #   repo:<owner>@<ownerID>/<repo>@<repoID>:<context>
+  # The plain-name format shown in most documentation no longer matches.
+  github_sub = "repo:${local.github_owner}@${var.github_owner_id}/${local.github_name}@${var.github_repo_id}"
 }
