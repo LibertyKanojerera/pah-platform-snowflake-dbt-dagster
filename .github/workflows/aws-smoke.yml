@@ -1,0 +1,30 @@
+name: aws-smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# id-token: write is what lets the job request an OIDC token.
+# Without it the credentials step fails with a confusing 400.
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assume AWS role via OIDC
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::036999274035:role/pah-platform-github-actions
+          aws-region: us-east-1
+
+      - name: Prove the role works
+        run: |
+          aws sts get-caller-identity
+          aws s3 ls s3://pah-platform-landing-036999274035/landing/

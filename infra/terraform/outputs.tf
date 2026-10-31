@@ -20,3 +20,8 @@ output "secret_names" {
     postgres_app      = aws_secretsmanager_secret.postgres_app.name
   }
 }
+
+output "github_actions_role_arn" {
+  description = "Role GitHub Actions assumes via OIDC."
+  value       = aws_iam_role.github_actions.arn
+}
