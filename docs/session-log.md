@@ -70,3 +70,14 @@ Fixed: use_secrets_manager used `is not None`, so AWS_PROFILE="" took the AWS
 Next: plan S6, GitHub Actions OIDC. Identity provider plus a role trusting
       this repo only, scoped to main and pull requests. Smoke workflow that
       assumes the role and lists the landing bucket. Closes gate G1.
+
+## S7 - 2026-10-30
+Did: OIDC identity provider and pah-platform-github-actions role. Trust policy
+     scoped to two sub claims (main branch, pull_request) rather than a repo
+     wildcard, so an unreviewed feature branch cannot assume it. Inline policy
+     read-scoped to landing/. aws-smoke workflow assumes the role and lists the
+     bucket; green run confirms no long-lived AWS credentials anywhere.
+     GATE G1 CLOSED. Phase 0 complete.
+Next: Phase 1, plan S7. ingest/core/http.py: requests session with tenacity
+      retry, exponential backoff with jitter, structlog config, typed response
+      wrapper. First real Python module.
