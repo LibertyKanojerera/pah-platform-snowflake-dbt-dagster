@@ -87,3 +87,20 @@ Debugged: sts:AssumeRoleWithWebIdentity denied for 4 runs. Cause was GitHub's
 Next: Phase 1, plan S7. ingest/core/http.py: requests session with tenacity
       retry, exponential backoff with jitter, structlog config, typed response
       wrapper. First real Python module.
+
+## S8 - 2026-11-01
+Did: ingest/core/log.py (structlog, JSON off-TTY, console on) and
+     ingest/core/http.py: Session reuse, explicit (connect, read) timeout,
+     retry on transient status only, exponential backoff with jitter,
+     Retry-After honoured over computed backoff, frozen Response dataclass so
+     sources are not coupled to requests. Verified 404 raises without retrying
+     and 503 retries then raises.
+Deviation: structlog config lives in ingest/core/log.py, not http.py. Logging
+     is not HTTP-specific; the CLI and Dagster assets need it too.
+Next: plan S8, ingest/core/landing.py. Parquet writer, batch UUID, partitioned
+      key builder (landing/<source>/dt=/batch=/), manifest sidecar, S3 upload.
+
+Gotcha: DuckDB's default credential_chain cannot resolve an SSO profile.
+     Needs `eval "$(aws configure export-credentials --profile pah-admin
+     --format env)"` plus CREATE SECRET (... CHAIN 'env'). Same will apply to
+     transform/profiles.yml at S23 and the CI job at S50.
