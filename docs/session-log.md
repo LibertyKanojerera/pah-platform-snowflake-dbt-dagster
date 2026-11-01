@@ -72,12 +72,18 @@ Next: plan S6, GitHub Actions OIDC. Identity provider plus a role trusting
       assumes the role and lists the landing bucket. Closes gate G1.
 
 ## S7 - 2026-10-30
-Did: OIDC identity provider and pah-platform-github-actions role. Trust policy
-     scoped to two sub claims (main branch, pull_request) rather than a repo
-     wildcard, so an unreviewed feature branch cannot assume it. Inline policy
-     read-scoped to landing/. aws-smoke workflow assumes the role and lists the
-     bucket; green run confirms no long-lived AWS credentials anywhere.
-     GATE G1 CLOSED. Phase 0 complete.
+Did: OIDC provider and pah-platform-github-actions role. Trust policy scoped
+     to main and pull_request on this repo only. GATE G1 CLOSED, aws-smoke
+     green at f899677. PHASE 0 COMPLETE.
+Debugged: sts:AssumeRoleWithWebIdentity denied for 4 runs. Cause was GitHub's
+     immutable subject claims (April 2026): sub is now
+     repo:<owner>@<ownerID>/<repo>@<repoID>:<context>, not the plain-name form
+     every tutorial shows. Found by dumping the actual token claims in the
+     workflow; no amount of inspecting the AWS side would have revealed it.
+     Pinned the numeric IDs rather than wildcarding them. See ADR-014.
+     Second failure was my own check: `aws s3 ls` exits 1 on an empty listing,
+     so it could not distinguish "no objects" from "no access". Replaced with
+     s3api list-objects-v2. ADR-010 again, this time in the verification.
 Next: Phase 1, plan S7. ingest/core/http.py: requests session with tenacity
       retry, exponential backoff with jitter, structlog config, typed response
       wrapper. First real Python module.
