@@ -14,6 +14,7 @@ dependencies = [
     "dbt-duckdb>=1.11.0",
     "dbt-snowflake>=1.12.1",
     "duckdb>=1.5.5",
+    "pyarrow>=26.0.0",
     "pydantic-settings>=2.16.2",
     "requests>=2.34.2",
     "structlog>=26.1.0",
@@ -32,6 +33,7 @@ packages = ["ingest", "orchestrate"]
 [dependency-groups]
 dev = [
     "black>=26.5.1",
+    "boto3-stubs[s3]>=1.43.123",
     "mypy>=2.3.1",
     "pre-commit>=4.6.2",
     "pytest>=9.1.1",
