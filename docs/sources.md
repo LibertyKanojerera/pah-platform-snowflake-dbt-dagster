@@ -1,0 +1,211 @@
+# Sources
+
+## CMS Medicare Part D Prescribers - by Provider and Drug
+
+Reconnaissance performed 2026-11-01. Everything below was observed against the
+live API, not taken from documentation.
+
+### Catalog and discovery
+
+There is **one dataset UUID per release**, with no version parameter. The
+extractor resolves them at runtime from the DCAT catalog at
+`https://data.cms.gov/data.json` rather than hardcoding the table below, so a
+new release appears without a code change. The same query is what the Dagster
+sensor watches at plan S44.
+
+```bash
+curl -s https://data.cms.gov/data.json \
+  | jq -r '.dataset[]
+      | select(.title | test("Part D Prescribers - by Provider and Drug"; "i"))
+      | select(.distribution[]?.accessURL != null)
+      | "\(.title)\t\(.distribution[] | select(.accessURL != null) | .accessURL)"' \
+  | sort -u
+```
+
+Snapshot taken 2026-11-01:
+
+| Title date | UUID |
+|---|---|
+| 2013-12-31 | `c6905d43-45de-470d-897c-9ed8e75e256d` |
+| 2014-12-31 | `0779bc8d-18dd-40b8-9d61-7addc8b0daf1` |
+| 2015-12-31 | `1d650894-8afe-4056-ba31-a85cb0e3cee6` |
+| 2016-12-31 | `25106f9d-0eb8-4ba7-b237-486ee87d910a` |
+| 2017-12-31 | `05f108dd-76c4-49f4-9fdc-788d8f4251ec` |
+| 2018-12-31 | `802fe556-311f-4962-8d75-d5f4ff405884` |
+| 2019-12-31 | `2a6705e6-7a1e-460c-ba22-35249a531918` |
+| 2020-12-31 | `7795fe20-e80e-435a-a9ed-d2d65e05feeb` |
+| 2021-12-31 | `f68114ed-f854-4ffc-9c6e-ed78b5e2f8d0` |
+| 2022-12-30 | `b101b457-ffa4-49bb-8fd9-27c1266086e2` |
+| 2023-12-31 | `e54db557-cd82-4e91-a0fe-61aad5865d69` |
+| 2024-12-01 (A) | `9552739e-3d05-4c1b-8eff-ecabf391e2e5` |
+| 2024-12-01 (B) | `d5aa71a8-dcc0-4570-8bcf-bd39deac69fe` |
+
+Endpoint pattern:
+
+```
+https://data.cms.gov/data-api/v1/dataset/<uuid>/data
+https://data.cms.gov/data-api/v1/dataset/<uuid>/data/stats
+```
+
+Two oddities in that table, both of which would break a naive date parser:
+2022 ends `12-30`, not `12-31`; and **two distinct UUIDs share the title date
+`2024-12-01`**. See Open questions.
+
+### Response envelope
+
+A **bare JSON array** of row objects. No wrapper, no pagination metadata, no
+`next` link. Row count must be inferred from `length` and termination from a
+short page or the `/data/stats` total.
+
+### Every value is a string
+
+`"Tot_Clms": "20"`, `"Tot_Drug_Cst": "5994.01"`, `"Prscrbr_State_FIPS": "24"`.
+Numerics, counts and codes all arrive quoted.
+
+Land them as strings, preserving raw fidelity, and cast in dbt staging. The
+casts must handle the empty-string suppression sentinel explicitly, because
+`''` is not `NULL` in either DuckDB or Snowflake and `TRY_CAST('' AS INTEGER)`
+behaviour must be verified rather than assumed.
+
+### Columns
+
+| Column | Notes |
+|---|---|
+| `Prscrbr_NPI` | String. Join key to NPPES. Luhn-checkable. |
+| `Prscrbr_Last_Org_Name` | Individual surname or organisation name |
+| `Prscrbr_First_Name` | Empty for organisations |
+| `Prscrbr_City` | |
+| `Prscrbr_State_Abrvtn` | Two-letter |
+| `Prscrbr_State_FIPS` | Zero-padded string; do not cast to int |
+| `Prscrbr_Type` | Claim specialty, e.g. "Pulmonary Disease" |
+| `Prscrbr_Type_Src` | Provenance of the specialty, e.g. "Claim-Specialty" |
+| `Brnd_Name` | **See brand naming below** |
+| `Gnrc_Name` | **See brand naming below** |
+| `Tot_Clms` | |
+| `Tot_30day_Fills` | |
+| `Tot_Day_Suply` | |
+| `Tot_Drug_Cst` | Decimal as string |
+| `Tot_Benes` | Blank when suppressed |
+| `GE65_Sprsn_Flag` | |
+| `GE65_Tot_Clms` | |
+| `GE65_Tot_30day_Fills` | |
+| `GE65_Tot_Drug_Cst` | |
+| `GE65_Tot_Day_Suply` | |
+| `GE65_Bene_Sprsn_Flag` | |
+| `GE65_Tot_Benes` | Blank when suppressed |
+
+Casing is `Snake_Title_Case` and is not stable across tools. The Databricks
+build lost a column to case-insensitive resolution (ADR-010); treat the names
+as exact.
+
+### Brand and generic naming
+
+The values are not the molecule names:
+
+| Expected | Actual observed |
+|---|---|
+| `Orenitram` | `Orenitram Er` |
+| `Treprostinil` | `Treprostinil Diolamine` |
+
+Exact equality on either expected value returns zero rows. The pipeline would
+run green and report no PAH prescribing in the United States.
+
+This is the same failure as ADR-002 in the Databricks build, where naive
+equality on brand name silently dropped roughly 450 Orenitram rows. The
+longest-prefix matcher carried forward in that ADR is the resolution, and the
+test at plan S28 must assert it still catches these.
+
+Molecules and their brands, to be verified individually against the API:
+
+| Molecule | Brands |
+|---|---|
+| treprostinil | Remodulin, Tyvaso, Orenitram (observed as `Orenitram Er`) |
+| selexipag | Uptravi |
+| iloprost | Ventavis |
+| epoprostenol | Flolan, Veletri |
+
+Selexipag was approved in late 2015, so its absence from earlier release years
+is a true negative, not a gap. The test at plan S36 must not treat it as one.
+
+### Suppression
+
+CMS suppresses low-count values. Three distinct states observed, **none of
+them null**:
+
+| Sentinel | Meaning (to confirm) |
+|---|---|
+| `""` | Not suppressed, when in a `_Sprsn_Flag` column |
+| `""` | Suppressed, when in a `Tot_Benes` / `GE65_Tot_Benes` column |
+| `"#"` | Observed alongside `GE65_Tot_Clms: "0"` |
+| `"*"` | Observed alongside `GE65_Tot_Clms: "25"` |
+
+Observed row: `Tot_Clms: "23"` with `Tot_Benes: ""` and
+`GE65_Bene_Sprsn_Flag: "#"`. So a row can carry claims and costs while its
+beneficiary count is withheld.
+
+The same empty string therefore means "not suppressed" in a flag column and
+"suppressed" in a count column. Any staging logic that checks `IS NULL` will
+classify every row as unsuppressed and be silently wrong.
+
+For a rare disease a large majority of provider-drug pairs fall below the
+reporting threshold, so this is not an edge case. Plan S36 asserts the
+suppression rate sits inside an expected band.
+
+### Pagination
+
+| Parameter | Behaviour |
+|---|---|
+| `size` | Page size. **Hard ceiling of 6500**, observed. |
+| `offset` | Row offset |
+
+Measured: `size=5000` returns 5000; `size=6500` returns 6500; `size=6600`
+returns 6500; `size=8000` returns 6500. The cap is a row count, not a byte
+budget, since the ceiling held constant across requests.
+
+Total rows, UUID `d5aa71a8`:
+
+```json
+{"found_rows": 28023892, "total_rows": 28023892}
+```
+
+Twenty-eight million rows per release. Server-side filtering is mandatory, not
+an optimisation.
+
+### Filtering: CONFIRMED
+
+`filter[Column]=Value` works. Requires `curl -g` at the shell, since bash and
+curl both treat `[...]` as a glob; no issue from Python, where requests
+URL-encodes the brackets.
+
+Verified by contrast, not by assumption: unfiltered, the first two rows are
+Abrysvo and Boostrix Tdap; with `filter[Brnd_Name]=Orenitram%20Er`, both rows
+are Orenitram Er.
+
+`/data/stats` also accepts the filter, so a run knows its total up front.
+
+`keyword=` works as a broader fallback.
+`column=` does not accumulate across repeated parameters; unresolved.
+
+### Open questions for plan S11
+
+1. Does `filter[...]` work with `curl -g`? If not, is `keyword=` selective
+   enough, or does filtering have to happen client-side across 28M rows?
+   If client-side, the extractor design changes materially.
+2. Filter on `Brnd_Name` or `Gnrc_Name`? Generic is one request per molecule
+   and misses nothing when a new brand launches; brand is one request per
+   brand and is unambiguous. Decide and record as an ADR.
+3. **Two UUIDs share the title date `2024-12-01`.** Which is current, and does
+   the title date mean the data period or the release date? The 2013-2023
+   entries look like data periods, the 2024 pair may be release dates. Until
+   this is settled the year-to-UUID mapping is not trustworthy.
+4. Is the result set stably ordered without an explicit sort? If not, offset
+   pagination can skip or duplicate rows between pages and the idempotency
+   test at plan S13 will fail intermittently in a way that looks like a code
+   bug. Verify before writing the pagination loop.
+5. Rate limits: unobserved. No `Retry-After` or `X-RateLimit-*` headers seen,
+   but no load has been applied.
+
+### Sample
+
+`data/samples/cms_part_d_sample.json`, captured 2026-11-01 from UUID
+`d5aa71a8-dcc0-4570-8bcf-bd39deac69fe` via `keyword=Orenitram`.
