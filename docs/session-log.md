@@ -104,3 +104,16 @@ Gotcha: DuckDB's default credential_chain cannot resolve an SSO profile.
      Needs `eval "$(aws configure export-credentials --profile pah-admin
      --format env)"` plus CREATE SECRET (... CHAIN 'env'). Same will apply to
      transform/profiles.yml at S23 and the CI job at S50.
+
+## S10 - 2026-11-01
+Did: ingest/core/state.py. StateStore ABC with a checkpoint() context manager
+     whose write sits after the yield, so a raising body has no write path at
+     all. DuckDBStateStore with ingestion_state plus an append-only
+     ingestion_state_history. Regression guard, overridable for a deliberate
+     full refresh. Verified the failure path explicitly: advance() followed by
+     an exception leaves the previous watermark intact.
+     This is the corrected form of the Auto Loader stale-checkpoint bug from
+     the Databricks build. Candidate for ADR-015 at S67.
+Next: plan S10, CMS reconnaissance. Hit data.cms.gov by hand, document the
+      response envelope, pagination parameters and filter syntax in
+      docs/sources.md, save a sample to data/samples/. No extractor code.
