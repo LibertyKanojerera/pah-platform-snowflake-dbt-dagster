@@ -3,6 +3,10 @@
 One entry per session. The `Next:` line is written before closing the laptop,
 never at the start of the following session.
 
+Entry `Sn` records plan item `S(n-1)`; its `Next:` line names plan item `Sn`.
+The log is one ahead of docs/plan.md. Go by the plan item named, not the
+entry number.
+
 ## S1 - 2026-10-25
 Did: repo root confirmed correct; .env untracked; empty .gitignore found and
      populated (4th instance of the silent-gate pattern, ADR-010); AWS account
@@ -100,10 +104,17 @@ Deviation: structlog config lives in ingest/core/log.py, not http.py. Logging
 Next: plan S8, ingest/core/landing.py. Parquet writer, batch UUID, partitioned
       key builder (landing/<source>/dt=/batch=/), manifest sidecar, S3 upload.
 
-Gotcha: DuckDB's default credential_chain cannot resolve an SSO profile.
-     Needs `eval "$(aws configure export-credentials --profile pah-admin
-     --format env)"` plus CREATE SECRET (... CHAIN 'env'). Same will apply to
-     transform/profiles.yml at S23 and the CI job at S50.
+## S9 - 2026-11-01
+Did: ingest/core/landing.py. Batch (uuid per run, Hive-style
+     landing/<source>/dt=/batch=/ prefix), row_hash (canonical sorted JSON,
+     provenance columns excluded), add_provenance, zstd Parquet parts via
+     pyarrow, _manifest.json written last as a commit marker so a prefix
+     without one is an incomplete batch. Round trip verified: wrote to S3,
+     read back through DuckDB httpfs with provenance intact. Hash stability
+     verified against key reordering.
+Next: plan S9, ingest/core/state.py. Checkpoint read/write against a local
+      DuckDB table now, META.INGESTION_STATE later. Written only after a
+      successful load.
 
 ## S10 - 2026-11-01
 Did: ingest/core/state.py. StateStore ABC with a checkpoint() context manager
@@ -117,3 +128,57 @@ Did: ingest/core/state.py. StateStore ABC with a checkpoint() context manager
 Next: plan S10, CMS reconnaissance. Hit data.cms.gov by hand, document the
       response envelope, pagination parameters and filter syntax in
       docs/sources.md, save a sample to data/samples/. No extractor code.
+
+## S11 - 2026-11-01
+Did: plan S10, CMS reconnaissance. docs/sources.md rewritten with proper
+     tables. No extractor code, by design.
+
+Findings:
+- One dataset UUID per release, no version parameter. 13 entries, 2013 to
+  2024. Resolved at runtime from https://data.cms.gov/data.json rather than
+  hardcoded; the same query is what the S44 sensor will watch.
+- Envelope is a bare JSON array. No wrapper, no count, no next link.
+- Every value is a string, including numerics and FIPS codes. Land as string,
+  cast in staging at S25 with explicit empty-string handling.
+- Suppression has three states and none is null: "", "#", "*". A row can
+  carry claims and costs while its beneficiary count is withheld. "" means
+  "not suppressed" in a flag column and "suppressed" in a count column, so an
+  IS NULL check in staging would classify every row as unsuppressed.
+- Page size ceiling is 6500, measured: 5000 -> 5000, 6500 -> 6500,
+  6600 -> 6500, 8000 -> 6500. Row cap, not byte budget.
+- 28,023,892 rows in the latest release. Server-side filtering mandatory.
+- filter[Column]=Value CONFIRMED, exact match. Verified by contrast rather
+  than assumption: unfiltered head is Abrysvo and Boostrix Tdap, filtered head
+  is Orenitram Er. /data/stats respects the filter too.
+- keyword= works as a broader fallback. column= does NOT accumulate across
+  repeated parameters; syntax unresolved.
+
+Gotcha: the first two filter probes returned nothing and I read it as an API
+     rejection. It was curl treating [ and ] as a glob range: curl: (3) bad
+     range in URL. Needs -g at the shell. No issue from Python, where
+     requests URL-encodes the brackets.
+
+Biggest find: the stored values are not the names anyone would guess. Brand is
+     "Orenitram Er", not "Orenitram". Generic is "Treprostinil Diolamine", not
+     "Treprostinil". Exact equality on either guess returns zero rows and the
+     pipeline runs green reporting no PAH prescribing in the US. Same shape as
+     ADR-002 on the Databricks build.
+
+Wrote: ADR-015 (filter on Gnrc_Name against a version-controlled vocabulary,
+     derive route from Brnd_Name, guard with an unknown-value keyword sweep).
+     Route is a brand property, not a molecule property: treprostinil ships as
+     Remodulin infusion, Tyvaso inhaled and Orenitram oral, and route is the
+     dependent variable of research question one.
+     ADR-014 expanded from a stub into the full immutable-claims story.
+
+Still open, carried into S11: two UUIDs share the title date 2024-12-01 and it
+     is unclear whether that date is the data period or the release date, so
+     the year-to-UUID mapping is not yet trustworthy; result-set ordering
+     stability without an explicit sort is unverified, and if unstable then
+     offset pagination can skip or duplicate rows and the S13 idempotency test
+     will fail intermittently; column= syntax; rate limits unobserved.
+
+Next: plan S11, CMS pagination. ingest/sources/cms_part_d.py: offset and size
+      loop with stride 6500, total from /data/stats with the filter applied,
+      termination conditions. Resolve the ordering-stability question first,
+      before writing the loop.

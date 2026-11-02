@@ -171,6 +171,16 @@ Total rows, UUID `d5aa71a8`:
 Twenty-eight million rows per release. Server-side filtering is mandatory, not
 an optimisation.
 
+`/data/stats` returns two counts and they are not interchangeable:
+`found_rows` honours the filter, `total_rows` is the unfiltered table size.
+Observed with `filter[Brnd_Name]=Orenitram Er`: found_rows 450,
+total_rows 28,023,892. Paginating against total_rows would issue ~4,300
+requests to yield 450 rows.
+
+Ordering is stable: the same request returns identical rows twice, and
+overlapping windows agree (rows 25-49 of offset=0 match rows 0-24 of
+offset=25). Offset pagination is therefore safe without an explicit sort.
+
 ### Filtering: CONFIRMED
 
 `filter[Column]=Value` works. Requires `curl -g` at the shell, since bash and
@@ -205,7 +215,32 @@ are Orenitram Er.
 5. Rate limits: unobserved. No `Retry-After` or `X-RateLimit-*` headers seen,
    but no load has been applied.
 
+Duplicate was verified identical by row count rather than assumed, and that temporal disagreement is the trigger for refusing.
+
 ### Sample
 
 `data/samples/cms_part_d_sample.json`, captured 2026-11-01 from UUID
 `d5aa71a8-dcc0-4570-8bcf-bd39deac69fe` via `keyword=Orenitram`.
+
+### Counts, ordering and grain
+
+`/data/stats` returns two counts and they are not interchangeable:
+`found_rows` honours the filter, `total_rows` is the unfiltered table size.
+With `filter[Brnd_Name]=Orenitram Er` on the 2024 release: found_rows 450,
+total_rows 28,023,892. Paginating against total_rows would issue ~4,300
+requests to yield 450 rows.
+
+Ordering is stable. The same request returns identical rows twice, and
+overlapping windows agree: rows 25-49 of offset=0 match rows 0-24 of
+offset=25. Offset pagination is safe without an explicit sort.
+
+Grain: for one brand in one release year, Prscrbr_NPI is unique. 2023
+Orenitram Er returned 391 rows and 391 distinct NPIs. Candidate natural key
+is (Prscrbr_NPI, Brnd_Name, release_year); confirm against a second brand
+before S32 relies on it.
+
+Duplicate catalog registrations exist. 2024-12-01 is registered under two
+UUIDs whose data is identical (both report found_rows 450). Verified by row
+count rather than assumed. resolve_dataset() collapses duplicates that agree
+on `temporal` and logs a warning; it still refuses when `temporal` differs,
+since that would mean two genuinely different cuts.

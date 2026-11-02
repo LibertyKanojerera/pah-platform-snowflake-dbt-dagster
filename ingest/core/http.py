@@ -83,6 +83,12 @@ class Response:
     attempts: int
 
     def json(self) -> Any:
+        content_type = self.headers.get("Content-Type", "")
+        if "json" not in content_type.lower():
+            raise ValueError(
+                f"expected JSON from {self.url}, got Content-Type "
+                f"{content_type!r} ({len(self.body)} bytes)"
+            )
         return json.loads(self.body)
 
 
@@ -154,7 +160,15 @@ class HttpClient:
         self._session.close()
 
     def get(self, path: str, *, params: Mapping[str, Any] | None = None) -> Response:
-        url = f"{self.base_url}/{path.lstrip('/')}" if self.base_url else path
+        # `path` may be an absolute URL, e.g. an accessURL taken from a
+        # catalog. Prepending base_url to one yields a URL that CMS serves as
+        # 200 with HTML, which is indistinguishable from success here.
+        if path.startswith(("http://", "https://")):
+            url = path
+        elif self.base_url:
+            url = f"{self.base_url}/{path.lstrip('/')}"
+        else:
+            url = path
 
         retrying = Retrying(
             stop=stop_after_attempt(self.max_attempts),
