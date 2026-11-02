@@ -182,3 +182,40 @@ Next: plan S11, CMS pagination. ingest/sources/cms_part_d.py: offset and size
       loop with stride 6500, total from /data/stats with the filter applied,
       termination conditions. Resolve the ordering-stability question first,
       before writing the loop.
+
+## S13 - 2026-11-02
+Did: plan S12. DrugVocabulary (reads transform/seeds/drug_vocabulary.csv,
+     shared with dbt), sweep_for_unknown_drugs (keyword sweep per molecule
+     stem, raises on any pair absent from the vocabulary), _release_year from
+     temporal rather than the title, land_release (filter per generic, tag
+     _cms_release_year and _cms_dataset_uuid, one batch per release, manifest
+     carries rows_per_generic). Landed 2023: 1,690 rows, verified by DuckDB
+     read-back; pair counts reconcile against the generic-level counts.
+
+Vocabulary established by sweeping all 13 releases: 12 pairs, 9 distinct
+     generic names. Four patterns that would each break a naive build:
+     a generic name moves between releases (Tyvaso filed under
+     Treprostinil/Neb Accessories in 2013, Tyvaso Dpi under Treprostinil in
+     2023); one brand carries several generic names (Veletri under both
+     Epoprostenol Sodium and Epoprostenol Sodium (Arginine), the diluent
+     inconsistently recorded); brand sometimes equals generic (authorized
+     generics of Remodulin and epoprostenol); and Tyvaso Refill Kit is
+     nebulizer supplies, not a drug, so a product_type column was added keyed
+     off brand rather than generic.
+
+Gotcha: aws configure export-credentials leaves AWS_ACCESS_KEY_ID and friends
+     in the shell, and those take precedence over AWS_PROFILE in boto3. Once
+     expired, writes fail with "refreshed credentials are still expired" while
+     the SSO session is healthy. Unset all three, or export in a subshell.
+     Recorded in sources.md.
+
+For S25: exclude product_type='accessory' from claim counts. 4 of 1,690 rows
+     in 2023, small but they are not prescribing events.
+For S36: molecules need per-molecule validity windows, not a blanket
+     all-four-every-year assertion. Selexipag absent before 2016; iloprost
+     present 2013, absent 2023.
+
+Next: plan S13, the idempotency test. pytest: run the 2023 extraction twice,
+      assert identical row counts and no duplicate natural keys. Grain is
+      (Prscrbr_NPI, Brnd_Name, _cms_release_year) per the S11 finding; confirm
+      it holds across brands before asserting on it.
