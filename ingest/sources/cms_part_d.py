@@ -23,6 +23,14 @@ from typing import Any, Iterator, Mapping
 from ingest.core.http import HttpClient
 from ingest.core.log import get_logger
 
+import csv
+from pathlib import Path
+from datetime import date
+
+from ingest.core.landing import Batch, LandedPart, LandingWriter
+
+DEFAULT_VOCABULARY_PATH = Path("transform/seeds/drug_vocabulary.csv")
+
 log = get_logger(__name__)
 
 CMS_BASE_URL = "https://data.cms.gov"
@@ -202,3 +210,151 @@ def iter_rows(
         raise PaginationIncomplete(f"crawled {yielded} rows, API reported {total}")
 
     bound.info("cms.crawl_complete", yielded=yielded)
+
+
+#: Stems used by the unknown-value sweep. Deliberately the molecule names
+#: rather than the stored values, since the point is to find stored values the
+#: vocabulary does not yet know about.
+MOLECULE_STEMS = ("treprostinil", "selexipag", "iloprost", "epoprostenol")
+
+
+class UnknownDrugValues(Exception):
+    """The sweep found drug values absent from the vocabulary."""
+
+
+@dataclass(frozen=True)
+class DrugVocabulary:
+    """The PAH drug vocabulary, from the dbt seed.
+
+    Lives in transform/seeds/ so Python and dbt read the same file. Nothing
+    hardcodes a drug string in code. See ADR-015.
+    """
+
+    rows: tuple[dict[str, str], ...]
+
+    @classmethod
+    def from_csv(cls, path: Path = DEFAULT_VOCABULARY_PATH) -> DrugVocabulary:
+        with path.open(newline="", encoding="utf-8") as handle:
+            rows = tuple(dict(r) for r in csv.DictReader(handle))
+        if not rows:
+            raise ValueError(f"{path} is empty")
+        return cls(rows=rows)
+
+    @property
+    def generic_names(self) -> tuple[str, ...]:
+        """Distinct exact Gnrc_Name values, the filter predicates."""
+        return tuple(sorted({r["gnrc_name"] for r in self.rows}))
+
+    @property
+    def known_pairs(self) -> frozenset[tuple[str, str]]:
+        return frozenset((r["gnrc_name"], r["brnd_name"]) for r in self.rows)
+
+
+def sweep_for_unknown_drugs(
+    client: HttpClient,
+    dataset: CmsDataset,
+    vocabulary: DrugVocabulary,
+    *,
+    stems: tuple[str, ...] = MOLECULE_STEMS,
+) -> None:
+    """Broad keyword sweep, compared against the vocabulary.
+
+    Exact-match filtering can only return what the vocabulary already knows,
+    so a new formulation would be omitted and the omission would look exactly
+    like a quiet quarter. This raises instead. See ADR-015; the sweep is not
+    optional and removing it falsifies that decision.
+    """
+    unknown: set[tuple[str, str]] = set()
+
+    for stem in stems:
+        rows: list[dict[str, Any]] = client.get(
+            dataset.data_url, params={"keyword": stem, "size": str(MAX_PAGE_SIZE)}
+        ).json()
+
+        for row in rows:
+            pair = (row.get("Gnrc_Name", ""), row.get("Brnd_Name", ""))
+            if pair not in vocabulary.known_pairs:
+                unknown.add(pair)
+
+    if unknown:
+        raise UnknownDrugValues(
+            f"{dataset.uuid}: {len(unknown)} drug value pairs not in the "
+            "vocabulary; review and add to transform/seeds/drug_vocabulary.csv "
+            "or confirm they are unrelated matches: "
+            + "; ".join(sorted(f"{g!r}/{b!r}" for g, b in unknown))
+        )
+
+    log.info("cms.sweep_clean", uuid=dataset.uuid, stems=len(stems))
+
+
+def _release_year(dataset: CmsDataset) -> str:
+    """Release year from `temporal`, not from the title.
+
+    The 2024 pair's title date does not match its temporal endDate, so the
+    title is not a reliable source for the partition key.
+    """
+    temporal = dataset.temporal
+    if isinstance(temporal, list) and temporal:
+        end = temporal[0].get("endDate", "")
+        if len(end) >= 4:
+            return end[:4]
+    raise ValueError(f"{dataset.uuid}: no usable temporal endDate")
+
+
+def land_release(
+    client: HttpClient,
+    dataset: CmsDataset,
+    vocabulary: DrugVocabulary,
+    writer: LandingWriter,
+    *,
+    dt: date | None = None,
+    skip_sweep: bool = False,
+) -> tuple[Batch, LandedPart]:
+    """Filter to the vocabulary, land one release as a single batch."""
+    if not skip_sweep:
+        sweep_for_unknown_drugs(client, dataset, vocabulary)
+
+    year = _release_year(dataset)
+    batch = Batch.new("cms_part_d", dt=dt)
+    bound = log.bind(uuid=dataset.uuid, release_year=year, batch_id=batch.batch_id)
+
+    collected: list[dict[str, Any]] = []
+    per_generic: dict[str, int] = {}
+
+    for generic in vocabulary.generic_names:
+        filters = {"filter[Gnrc_Name]": generic}
+        rows = list(iter_rows(client, dataset, filters=filters))
+
+        for row in rows:
+            # Source-specific provenance, beyond the five LandingWriter adds.
+            # Included in the row hash, because the same NPI and brand in a
+            # different release year is a different row.
+            row["_cms_release_year"] = year
+            row["_cms_dataset_uuid"] = dataset.uuid
+
+        collected.extend(rows)
+        per_generic[generic] = len(rows)
+        bound.info("cms.generic_extracted", generic=generic, rows=len(rows))
+
+    if not collected:
+        raise PaginationIncomplete(
+            f"{dataset.uuid}: vocabulary matched zero rows; the stored values "
+            "have probably changed again (see ADR-015)"
+        )
+
+    part = writer.write_part(collected, batch=batch)
+    writer.write_manifest(
+        batch=batch,
+        parts=[part],
+        source_query={
+            "dataset_uuid": dataset.uuid,
+            "dataset_title": dataset.title,
+            "release_year": year,
+            "filter_column": "Gnrc_Name",
+            "generic_names": list(vocabulary.generic_names),
+            "rows_per_generic": per_generic,
+        },
+    )
+
+    bound.info("cms.release_landed", rows=len(collected), key=part.key)
+    return batch, part

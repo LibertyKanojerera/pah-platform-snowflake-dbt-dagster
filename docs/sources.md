@@ -244,3 +244,92 @@ UUIDs whose data is identical (both report found_rows 450). Verified by row
 count rather than assumed. resolve_dataset() collapses duplicates that agree
 on `temporal` and logs a warning; it still refuses when `temporal` differs,
 since that would mean two genuinely different cuts.
+
+### Drug vocabulary
+
+The stored `Gnrc_Name` and `Brnd_Name` values do not match the molecule names,
+and they are not stable across releases. The full vocabulary was established
+by sweeping all 13 releases with `keyword=<molecule stem>` and collecting
+distinct pairs. Twelve pairs across nine distinct generic names:
+
+| Gnrc_Name | Brnd_Name | Molecule | Route | Type |
+|---|---|---|---|---|
+| Epoprostenol Sodium | Epoprostenol Sodium | epoprostenol | parenteral | drug |
+| Epoprostenol Sodium | Veletri | epoprostenol | parenteral | drug |
+| Epoprostenol Sodium (Arginine) | Veletri | epoprostenol | parenteral | drug |
+| Epoprostenol Sodium (Glycine) | Flolan | epoprostenol | parenteral | drug |
+| Iloprost Tromethamine | Ventavis | iloprost | inhaled | drug |
+| Selexipag | Uptravi | selexipag | oral | drug |
+| Treprostinil | Tyvaso Dpi | treprostinil | inhaled | drug |
+| Treprostinil Diolamine | Orenitram Er | treprostinil | oral | drug |
+| Treprostinil Sodium | Remodulin | treprostinil | parenteral | drug |
+| Treprostinil Sodium | Treprostinil | treprostinil | parenteral | drug |
+| Treprostinil/Neb Accessories | Tyvaso | treprostinil | inhaled | drug |
+| Treprostinil/Neb Accessories | Tyvaso Refill Kit | treprostinil | inhaled | accessory |
+
+Maintained as `transform/seeds/drug_vocabulary.csv`, read by both the Python
+extractor and dbt. Distinct `gnrc_name` values are the filter predicates;
+`brnd_name` determines route and product type. See ADR-015.
+
+#### The vocabulary is not stable across releases
+
+Four patterns in the table above would each break a naive implementation.
+
+**A generic name can move between releases.** In the 2013 release, Tyvaso is
+filed under `Treprostinil/Neb Accessories`. By 2023 the inhaled product is
+`Tyvaso Dpi` under `Treprostinil`, while `Treprostinil/Neb Accessories` now
+carries `Tyvaso Refill Kit`. A vocabulary built from either year alone would
+silently omit the inhaled route from the other. This is the concrete evidence
+for the unknown-value sweep in ADR-015.
+
+**One brand can carry several generic names.** Veletri appears under both
+`Epoprostenol Sodium` and `Epoprostenol Sodium (Arginine)` in different
+releases. Epoprostenol is formulated with a diluent — glycine for Flolan,
+arginine for Veletri — and CMS has not been consistent about including it.
+This is why the vocabulary grain is the pair, not either column alone.
+
+**Brand name sometimes equals generic name.** `Treprostinil Sodium` /
+`Treprostinil` and `Epoprostenol Sodium` / `Epoprostenol Sodium` are
+authorized generics. These read like data errors and are not.
+
+**`Tyvaso Refill Kit` is not a drug.** It is nebulizer supplies billed under
+Part D. Counting its claims as prescribing events double-counts any patient
+receiving both the drug and its accessories, inflating the measure research
+question one depends on. Hence the `product_type` column, which keys off
+brand rather than generic, since `Treprostinil/Neb Accessories` is a drug in
+2013 and an accessory in 2023. Accessories must be excluded from claim counts
+at the staging or intermediate layer (plan S25).
+
+#### Molecule validity windows
+
+Not every molecule appears in every release, and both directions are true
+negatives rather than gaps:
+
+| Molecule | Note |
+|---|---|
+| selexipag | Approved late 2015; absent from earlier releases |
+| iloprost | Present in 2013, absent from 2023; discontinued or below the reporting threshold |
+
+The completeness test at plan S36 therefore needs a per-molecule validity
+window, not a blanket assertion that all four molecules appear every year.
+
+#### Sweep method
+
+Run against every release UUID, for each molecule stem:
+
+```bash
+curl -sg "https://data.cms.gov/data-api/v1/dataset/$UUID/data?size=6500&keyword=$STEM" \
+  | jq -r '.[] | "\(.Gnrc_Name)\t\(.Brnd_Name)"' | sort -u
+```
+
+`keyword` matches broadly and can return unrelated drugs whose names contain
+a stem as a substring, so output requires human review before entering the
+seed. The extractor runs the same sweep on every extraction and raises on any
+pair absent from the vocabulary.
+
+`aws configure export-credentials` sets AWS_ACCESS_KEY_ID,
+AWS_SECRET_ACCESS_KEY and AWS_SESSION_TOKEN in the shell. Those take
+precedence over AWS_PROFILE in boto3, so once they expire, Python writes fail
+with "Credentials were refreshed, but the refreshed credentials are still
+expired" even though the SSO session is healthy. Unset all three before
+running anything that writes, or export them in a subshell.
