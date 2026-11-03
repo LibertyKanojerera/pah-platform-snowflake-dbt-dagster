@@ -43,3 +43,10 @@ dev = [
     "sqlfluff-templater-dbt>=4.3.0",
     "types-requests>=2.31.0.6",
 ]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: hits the live CMS API and real S3; excluded by default",
+]
+addopts = "-m 'not integration'"
+testpaths = ["tests"]

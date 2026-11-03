@@ -309,7 +309,8 @@ def land_release(
     *,
     dt: date | None = None,
     skip_sweep: bool = False,
-) -> tuple[Batch, LandedPart]:
+    return_rows: bool = False,
+) -> tuple[Batch, LandedPart] | tuple[Batch, LandedPart, list[dict[str, Any]]]:
     """Filter to the vocabulary, land one release as a single batch."""
     if not skip_sweep:
         sweep_for_unknown_drugs(client, dataset, vocabulary)
@@ -357,4 +358,7 @@ def land_release(
     )
 
     bound.info("cms.release_landed", rows=len(collected), key=part.key)
+
+    if return_rows:
+        return batch, part, collected
     return batch, part
