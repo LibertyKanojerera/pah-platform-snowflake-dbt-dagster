@@ -333,3 +333,39 @@ precedence over AWS_PROFILE in boto3, so once they expire, Python writes fail
 with "Credentials were refreshed, but the refreshed credentials are still
 expired" even though the SSO session is healthy. Unset all three before
 running anything that writes, or export them in a subshell.
+
+## NPPES NPI Registry
+
+Reconnaissance performed 2026-11-04 against the live API.
+
+### Endpoint and version
+### Not found: resolved
+
+A well-formed but unassigned NPI returns **HTTP 200** with:
+
+```json
+{"result_count": 0, "results": []}
+```
+
+Not a 404, not an `Errors` object. `ingest/core/http.py` therefore returns it
+as an ordinary success, and the miss is invisible at the transport layer. The
+NPPES module must branch on `result_count` itself; the dead-letter path at
+plan S16 lives there, not in the HTTP client.
+
+Three distinct NPPES outcomes, only one of which the HTTP layer can see:
+
+| Outcome | HTTP | Body |
+|---|---|---|
+| Found | 200 | `result_count: 1`, populated `results` |
+| Not found | 200 | `result_count: 0`, empty `results` |
+| Bad request | not captured | `{"Errors": [...]}` |
+
+### Enumeration type: all individuals
+
+Every one of the 11,830 landed CMS rows carries a non-empty
+`Prscrbr_First_Name` (lengths 3 to 13, no nulls, no blanks), so all 1,100
+distinct NPIs are individuals. PAH is specialist-prescribed and no
+organisational NPIs appear in the prescriber set.
+
+The `NPI-2` branch in `nppes.py` is therefore written defensively but is
+untested by this data. Say so rather than claiming coverage it does not have.

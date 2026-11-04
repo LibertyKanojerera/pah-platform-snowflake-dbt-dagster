@@ -219,3 +219,39 @@ Next: plan S13, the idempotency test. pytest: run the 2023 extraction twice,
       assert identical row counts and no duplicate natural keys. Grain is
       (Prscrbr_NPI, Brnd_Name, _cms_release_year) per the S11 finding; confirm
       it holds across brands before asserting on it.
+
+Byte-identical output: four separate runs produced part-0000.parquet at
+     exactly 130,853 bytes and _manifest.json at 1,400 bytes every time. Row
+     order, Parquet encoding and zstd compression are all reproducible, not
+     just the row content. Only the batch UUID differs.
+
+## S14 - 2026-11-03
+Did: plan S13. Two-tier test suite. 17 unit tests with hand-rolled HTTP and
+     S3 stubs (no moto, no network, run in CI); 5 integration tests marked and
+     excluded by default, hitting the live API and real S3.
+     Unit coverage: row hash stability across key order and across provenance,
+     manifest written after data, batch prefixes never collide, write_part
+     refuses empty input, iter_rows raises on both truncation and
+     over-delivery, resolve_dataset collapses identical duplicates but refuses
+     differing temporal, sweep raises on unknown vocabulary pairs.
+     Integration: both runs return the same row count and the same row-hash
+     set; natural key unique within a batch; no brand under two generics in
+     one release; union across both batch prefixes deduplicates to one batch.
+
+Settled: the natural key is (Prscrbr_NPI, Brnd_Name, _cms_release_year),
+     verified across all eight pairs rather than the single brand measured at
+     S11. Gnrc_Name is NOT needed. This is fct_claims' unique_key at S32.
+
+Proved the suite can fail: broke row_hash to include provenance, confirmed
+     test_row_hash_ignores_provenance_columns failed with a hash diff, then
+     reverted. ADR-010 discipline — a suite that has only ever passed has not
+     been shown capable of failing.
+
+Fixed: DEFAULT_VOCABULARY_PATH was CWD-relative, so it resolved only from the
+     repo root and errored under pytest from tests/. Now anchored with
+     Path(__file__).resolve().parents[2]. Would have broken Dagster at S39 and
+     CI at S50, both of which run from elsewhere. Same family as the
+     September git-root bug: works from one directory, fails from another.
+
+Next: plan S14, NPPES reconnaissance. Response shape, 404 behaviour, observed
+      rate limits, sample into data/samples/. No extractor code.

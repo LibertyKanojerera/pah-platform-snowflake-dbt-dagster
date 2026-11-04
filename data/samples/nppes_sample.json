@@ -1,0 +1,89 @@
+{
+  "_captured": "2026-11-04",
+  "_note": "Individual (NPI-1) and an unassigned NPI. No organisational NPIs appear in the PAH prescriber set; the NPI-2 branch is untested by this data.",
+  "individual": {
+    "result_count": 1,
+    "results": [
+      {
+        "addresses": [
+          {
+            "address_1": "920 E 1ST ST",
+            "address_2": "STE P201",
+            "address_purpose": "LOCATION",
+            "address_type": "DOM",
+            "city": "DULUTH",
+            "country_code": "US",
+            "country_name": "United States",
+            "postal_code": "558052201",
+            "state": "MN",
+            "telephone_number": "218-249-7970"
+          },
+          {
+            "address_1": "920 E 1ST ST",
+            "address_2": "STE P201",
+            "address_purpose": "MAILING",
+            "address_type": "DOM",
+            "city": "DULUTH",
+            "country_code": "US",
+            "country_name": "United States",
+            "postal_code": "558052201",
+            "state": "MN",
+            "telephone_number": "218-249-7970"
+          }
+        ],
+        "basic": {
+          "certification_date": "2020-12-04",
+          "credential": "MD",
+          "enumeration_date": "2006-05-12",
+          "first_name": "JOSEPH",
+          "last_name": "MARTINELLI",
+          "last_updated": "2020-12-04",
+          "middle_name": "J",
+          "name_prefix": "Dr.",
+          "sex": "M",
+          "sole_proprietor": "NO",
+          "status": "A"
+        },
+        "created_epoch": "1147453855000",
+        "endpoints": [
+          {
+            "address_1": "920 E 1st St",
+            "address_2": "Ste P201",
+            "address_type": "DOM",
+            "affiliation": "N",
+            "city": "Duluth",
+            "contentTypeDescription": "",
+            "country_code": "US",
+            "country_name": "United States",
+            "endpoint": "him@slk.direct.slhduluth.com",
+            "endpointType": "DIRECT",
+            "endpointTypeDescription": "Direct Messaging Address",
+            "postal_code": "558052201",
+            "state": "MN",
+            "useDescription": ""
+          }
+        ],
+        "enumeration_type": "NPI-1",
+        "identifiers": [],
+        "last_updated_epoch": "1607114795000",
+        "number": "1003867573",
+        "other_names": [],
+        "practiceLocations": [],
+        "taxonomies": [
+          {
+            "code": "207RP1001X",
+            "desc": "Internal Medicine, Pulmonary Disease",
+            "license": "40757",
+            "primary": true,
+            "state": "MN",
+            "taxonomy_group": ""
+          }
+        ]
+      }
+    ]
+  },
+  "not_found": {
+    "result_count": 0,
+    "results": []
+  }
+}
