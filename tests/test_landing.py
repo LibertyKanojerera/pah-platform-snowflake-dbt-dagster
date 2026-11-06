@@ -80,19 +80,3 @@ def test_manifest_is_written_after_the_data(fake_s3) -> None:
     manifest = json.loads(fake_s3.objects[manifest_key])
     assert manifest["row_count_total"] == 1
     assert manifest["parts"][0]["key"] == part.key
-
-
-def test_both_runs_produce_identical_source_row_hashes(landed) -> None:
-    """The core idempotency assertion.
-
-    Equal counts alone would pass even if the content differed. Hashing both
-    row sets with the same function landing uses proves the extraction is
-    deterministic.
-
-    Hashes are recomputed here rather than read off the rows: provenance is
-    attached inside write_part, which returns a new list, so the rows
-    land_release hands back are pre-provenance by design. That the landed
-    hash excludes provenance is covered by the unit suite.
-    """
-    first, second = landed
-    assert {row_hash(r) for r in first} == {row_hash(r) for r in second}

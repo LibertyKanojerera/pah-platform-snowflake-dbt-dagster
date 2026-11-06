@@ -255,3 +255,41 @@ Fixed: DEFAULT_VOCABULARY_PATH was CWD-relative, so it resolved only from the
 
 Next: plan S14, NPPES reconnaissance. Response shape, 404 behaviour, observed
       rate limits, sample into data/samples/. No extractor code.
+
+## S15 - 2026-11-04
+Did: plan S14, NPPES reconnaissance. docs/sources.md gains an NPPES section;
+     data/samples/nppes_sample.json holds a found and a not-found response.
+
+Findings:
+- version param is mandatory; omitting it or passing 9.9 both return
+  {"Errors": [{"description": "Unsupported Version", ...}]} rather than
+  falling back. Errors arrive in the body, so http.py cannot be relied on to
+  raise.
+- Envelope is {"result_count": N, "results": [...]}. One record per NPI, no
+  bulk endpoint, so enrichment is one request per distinct NPI.
+- Not found is HTTP 200 with result_count 0, NOT a 404. The dead-letter path
+  at S16 therefore lives in nppes.py keyed on result_count, not in the HTTP
+  layer. ADR-010 family: at the transport layer a miss and a hit are the same.
+- taxonomies is an array with a `primary` boolean. Observed record has one
+  entry. Unresolved: what to do when none is primary or several are. Picking
+  [0] would silently misclassify specialty, the independent variable of
+  research question one. Must settle before S29.
+- addresses is an array with address_purpose LOCATION | MAILING. Use LOCATION.
+  postal_code is unformatted ZIP+4 with no hyphen; truncate to 5 for joins.
+- Rate: 30 sequential requests in 3.50s, all 200, no throttling. ~8.6 req/s.
+  Concurrent ceiling deliberately not probed.
+- Workload: 1,100 distinct NPIs across 11,830 rows, so a full pass is ~2 min.
+- All 1,100 NPIs are individuals. No NPI-2 organisations in the PAH
+  prescriber set, so that branch will be untested by this data.
+- No history in the API. basic.last_updated says when a record changed, not
+  what it was. Observed record last changed 2020-12-04.
+
+Decided: SCD2 at S30 snapshots CMS-derived attributes, not NPPES. Prscrbr_Type
+     varies across 11 release years in data already landed, giving genuine
+     deltas, and it is the specialty field the research question uses. NPPES
+     stays a point-in-time enrichment. Mechanism: run the snapshot once per
+     release year in sequence to build the history.
+
+Next: plan S15, ingest/sources/nppes.py. Batched NPI lookup with a
+      token-bucket throttle at or below 8.6 req/s, result_count branch for
+      misses, handle NPI-1 and NPI-2.
