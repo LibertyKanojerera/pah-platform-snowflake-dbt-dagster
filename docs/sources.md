@@ -369,3 +369,15 @@ organisational NPIs appear in the prescriber set.
 
 The `NPI-2` branch in `nppes.py` is therefore written defensively but is
 untested by this data. Say so rather than claiming coverage it does not have.
+
+### Landing zone contains multiple batches per release
+
+Every extraction writes a new `batch=<uuid>` prefix rather than overwriting,
+so the landing zone accumulates one copy of a release per run. As of
+2026-11-06 the 2023 release is present seven times (6 integration-test runs
+plus the S12 landing), giving 11,830 rows for 1,690 distinct source rows.
+
+Consequence for plan S23: a `read_parquet` glob over the landing zone must
+deduplicate on the natural key (Prscrbr_NPI, Brnd_Name, _cms_release_year) or
+select the most recent batch per release year. The staging layer owns this;
+the landing zone is deliberately append-only.

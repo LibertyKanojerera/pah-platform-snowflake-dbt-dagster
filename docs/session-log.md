@@ -293,3 +293,53 @@ Decided: SCD2 at S30 snapshots CMS-derived attributes, not NPPES. Prscrbr_Type
 Next: plan S15, ingest/sources/nppes.py. Batched NPI lookup with a
       token-bucket throttle at or below 8.6 req/s, result_count branch for
       misses, handle NPI-1 and NPI-2.
+
+## S16 - 2026-11-06
+Did: plan S15. ingest/core/throttle.py (TokenBucket, monotonic clock, burst to
+     capacity then settle to rate) and ingest/sources/nppes.py: one request
+     per NPI, result_count branch for misses, Errors-in-body check, flatten to
+     a row with _raw_response retained as canonical JSON. 19 new unit tests.
+     Full run: 1,100 NPIs at 5 req/s in ~4 minutes, 1,095 found, landed to
+     landing/nppes/dt=2026-11-06/batch=a3e7ecfb.
+     Join verified: 1,100 CMS NPIs, 1,100 matched, 1,095 enriched.
+
+Design calls:
+- Flattened at landing with _raw_response kept. The two judgment calls
+  (which taxonomy is the specialty, which address is the practice location)
+  belong in tested code, not re-expressed in SQL per model. Nothing is lost.
+- Taxonomy resolution: one primary -> take it; single taxonomy with no
+  primary -> take it; otherwise pick the lowest code deterministically and
+  set taxonomy_ambiguous. Deterministic so re-runs agree and the idempotency
+  guarantee holds. Never a silent pick.
+- Throttled at 5 req/s against a measured ceiling of ~8.6. Free public
+  service, 1,100 requests, the difference is two minutes.
+
+Measured:
+- 60% of providers carry several taxonomies (30 of 50 sampled), but
+  ambiguous_taxonomy is 0 across all 1,100. The primary flag is reliable in
+  this dataset without exception, so the fallback is defensive code covered
+  only by unit tests. Do not claim it handles a case the data contains.
+- 5 of 1,100 NPIs are absent from NPPES: 1255345963, 1275615494, 1487613089,
+  1598772931, 1659374593. All prescribed in the 2023 release. Absent from the
+  registry as of today, three years later. Deactivation is likely but cannot
+  be distinguished from "never registered" with one release year landed.
+  Open until the backfill at S19.
+
+Fixed: _primary_taxonomy's ambiguous branch returned the sorted list while
+     every other branch returned a dict, violating its own signature. mypy
+     would have caught it once staged; it was masked by an isinstance guard
+     in flatten. Both removed, regression test added.
+
+Corrected an assumption: the landing zone holds the 2023 release SEVEN times
+     (S12 landing plus six integration-test runs). 7 x 1,690 = 11,830, which
+     is the row count we had been reading as eleven years of data. Only 2023
+     is landed; twelve release years remain. The 1,100 NPIs and the specialty
+     distribution are single-year figures.
+     Consequence for S23: _sources.yml cannot glob the landing zone naively.
+     Staging must deduplicate on (Prscrbr_NPI, Brnd_Name, _cms_release_year)
+     or select the latest batch per release year. The landing zone is
+     deliberately append-only; the staging layer owns deduplication.
+
+Stray: a copy of test_both_runs_produce_identical_source_row_hashes had been
+     duplicated into tests/test_landing.py, unmarked, where it ran in the
+     fast
