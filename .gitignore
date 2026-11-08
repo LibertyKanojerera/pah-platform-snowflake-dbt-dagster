@@ -19,6 +19,7 @@ rsa_key*
 data/landing/
 *.duckdb
 *.duckdb.wal
+data/cache.duckdb
 
 # dbt
 transform/target/

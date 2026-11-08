@@ -343,3 +343,48 @@ Corrected an assumption: the landing zone holds the 2023 release SEVEN times
 Stray: a copy of test_both_runs_produce_identical_source_row_hashes had been
      duplicated into tests/test_landing.py, unmarked, where it ran in the
      fast
+
+## S17 - 2026-11-08
+Did: plan S16. ingest/core/cache.py (JsonCache on DuckDB, namespaced, TTL
+     30 days) and NPPES resilience in iter_lookups.
+
+Three outcomes, not two, each handled differently:
+  found   -> cached, nppes_found=True
+  miss    -> cached (negative), nppes_found=False, nppes_error=''
+  failure -> NOT cached, nppes_found=False, nppes_error set, run continues
+Caching misses stops the 5 unfound NPIs being re-queried every run. Not
+caching failures means a transient error retries next run instead of becoming
+a hole that lasts the TTL.
+
+Failure tolerance: a per-NPI exception is caught, recorded and yielded, so one
+     bad lookup no longer discards the other 1,099. Bounded by a 5% failure
+     ceiling checked after 50 attempts, so a batch where most lookups errored
+     aborts rather than landing with a valid manifest and reading as a quiet
+     period. ADR-010.
+
+Measured: 100 NPIs, run 1 19.1s, run 2 1.0s, 100 cache hits, zero network.
+     The remaining second is 10ms per cache read from opening a DuckDB
+     connection per get - deliberate, same single-writer reason as the
+     checkpoint store. At 1,100 NPIs that is ~11s of overhead. A get_many()
+     doing one WHERE key IN (...) would collapse it if the NPI count grew an
+     order of magnitude. Known cost, named remedy.
+
+Deviation: no dead-letter table. It would duplicate state already in the
+     landed rows, where nppes_error <> '' identifies every failure, queryable
+     by dbt with batch and timestamp attached. And because failures are not
+     cached, the retry a dead-letter table usually drives already happens
+     automatically on the next run. The dead letter is a query, not a table.
+
+Also: separate cache.duckdb from the checkpoint store. The cache is
+     disposable, the checkpoint is not; sharing a file would mean you cannot
+     throw away one without risking the other.
+
+Fixed: manifest had `failed` and `errored` as the same expression. Replaced
+     with found / missed / failed, which are three distinct outcomes, so
+     requested == found + missed + failed is an invariant S36 can assert.
+     _primary_taxonomy now uses min() rather than sorted()[0] - same
+     semantics and determinism, O(n) not O(n log n). Ruff flagged it.
+
+Next: plan S17, synthetic patient events. Finish infra/postgres/seed.sql and
+      the generator: 5,000 patients, event timestamps, copay tier, initial
+      route, prescriber NPI drawn from the CMS set so the join resolves.

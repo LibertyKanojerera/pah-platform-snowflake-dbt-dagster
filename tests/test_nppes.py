@@ -16,6 +16,11 @@ from ingest.sources.nppes import (
 )
 from tests.conftest import FakeHttpClient
 
+from datetime import datetime, timedelta, timezone
+
+from ingest.core.cache import JsonCache
+from ingest.sources.nppes import TooManyFailures, iter_lookups
+
 
 def _tax(code: str, primary: bool = False, desc: str = "") -> dict:
     return {
@@ -217,3 +222,87 @@ def test_bucket_rejects_a_request_larger_than_capacity() -> None:
 def test_bucket_rejects_a_non_positive_rate() -> None:
     with pytest.raises(ValueError):
         TokenBucket(rate=0)
+
+
+@pytest.fixture
+def cache(tmp_path) -> JsonCache:
+    return JsonCache(path=str(tmp_path / "c.duckdb"), namespace="test")
+
+
+def test_cache_hit_does_not_call_the_client(cache) -> None:
+    client = FakeHttpClient(lambda p, q: {"result_count": 1, "results": [_record()]})
+    list(iter_lookups(client, ["1"], rate=1000, cache=cache))
+    assert len(client.calls) == 1
+
+    list(iter_lookups(client, ["1"], rate=1000, cache=cache))
+    assert len(client.calls) == 1, "second lookup should have been served from cache"
+
+
+def test_misses_are_cached_but_failures_are_not(cache) -> None:
+    """A non-existent NPI is a fact worth remembering. A transient failure
+    cached for the TTL becomes a permanent hole.
+    """
+
+    def handler(path, params):
+        if params["number"] == "BAD":
+            raise RuntimeError("transport")
+        return {"result_count": 0, "results": []}
+
+    client = FakeHttpClient(handler)
+    list(iter_lookups(client, ["A", "BAD"], rate=1000, cache=cache))
+    assert cache.get("A") is not None
+    assert cache.get("BAD") is None
+
+
+def test_an_expired_entry_is_treated_as_absent(tmp_path) -> None:
+    """A cache that never expires is indistinguishable from a working one
+    until the data has silently gone stale.
+    """
+    c = JsonCache(path=str(tmp_path / "c.duckdb"), namespace="test", ttl_days=30)
+    c.put("1", found=True, payload={"x": 1})
+    assert c.get("1") is not None
+
+    stale = datetime.now(timezone.utc) - timedelta(days=31)
+    with c._connect() as con:
+        con.execute("UPDATE cache_entries SET fetched_at = ? WHERE key = '1'", [stale])
+    assert c.get("1") is None
+
+
+def test_a_failing_lookup_does_not_abort_the_run() -> None:
+    def handler(path, params):
+        if params["number"] == "BAD":
+            raise RuntimeError("transport")
+        return {"result_count": 1, "results": [_record()]}
+
+    rows = list(iter_lookups(FakeHttpClient(handler), ["A", "BAD", "B"], rate=1000))
+    assert len(rows) == 3
+    assert [r.error for r in rows if r.error] == ["transport"]
+
+
+def test_mass_failure_aborts_rather_than_landing_a_hollow_batch() -> None:
+    """A batch where most lookups errored lands with a valid manifest and
+    reads as a quiet period. ADR-010.
+    """
+    client = FakeHttpClient(lambda p, q: (_ for _ in ()).throw(RuntimeError("down")))
+    with pytest.raises(TooManyFailures):
+        list(iter_lookups(client, [str(i) for i in range(200)], rate=1000))
+
+
+def test_a_few_early_failures_do_not_abort_a_short_run() -> None:
+    def handler(path, params):
+        if params["number"] == "0":
+            raise RuntimeError("transport")
+        return {"result_count": 1, "results": [_record()]}
+
+    rows = list(
+        iter_lookups(FakeHttpClient(handler), [str(i) for i in range(10)], rate=1000)
+    )
+    assert len(rows) == 10
+
+
+def test_flatten_carries_the_error(_=None) -> None:
+    row = flatten(NppesLookup(npi="1", found=False, record=None, error="boom"))
+    assert row["nppes_error"] == "boom"
+    assert (
+        flatten(NppesLookup(npi="1", found=True, record=_record()))["nppes_error"] == ""
+    )
