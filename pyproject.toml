@@ -14,6 +14,7 @@ dependencies = [
     "dbt-duckdb>=1.11.0",
     "dbt-snowflake>=1.12.1",
     "duckdb>=1.5.5",
+    "psycopg[binary]>=3.3.8",
     "pyarrow>=26.0.0",
     "pydantic-settings>=2.16.2",
     "requests>=2.34.2",

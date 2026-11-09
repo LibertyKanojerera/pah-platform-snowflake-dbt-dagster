@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: pah-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pah}
+      POSTGRES_USER: ${POSTGRES_USER:-pah}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pah_pgdata:/var/lib/postgresql/data
+      # Runs once, on an empty data directory only.
+      - ./seed.sql:/docker-entrypoint-initdb.d/01_seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pah} -d ${POSTGRES_DB:-pah}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pah_pgdata:
