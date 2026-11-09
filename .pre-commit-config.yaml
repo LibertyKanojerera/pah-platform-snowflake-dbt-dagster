@@ -35,3 +35,10 @@ repos:
         language: system
         files: ^transform/models/.*\.sql$
         pass_filenames: true
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.0
+    hooks:
+      - id: mypy
+        files: ^(ingest|infra)/.*\.py$
+        additional_dependencies: [types-requests]
