@@ -475,3 +475,63 @@ Next: plan S18, ingest/sources/app_postgres.py. Incremental extraction on a
       created_at high-water mark using the checkpoint store from S9. Land to
       S3 as a third source. Write ADR-018 on the watermark choice while the
       reasoning is fresh.
+
+## S19 - 2026-11-10
+Did: plan S18. ingest/sources/app_postgres.py: incremental extraction of
+     patients and patient_events, each with its own checkpoint. Server-side
+     cursor with itersize 10,000 so the client never buffers the full result.
+     Parts of 50,000 rows.
+
+     First run: patients 5,000 (1 part), patient_events 77,192 (2 parts).
+     The project's first multi-part batch - write_manifest has supported it
+     since S8 and had never been exercised.
+     Second run: no_new_rows and state.not_advanced for both. That pair is
+     the incremental claim.
+
+ADR-018 implemented and enforced:
+- Watermark reads created_at, never event_timestamp.
+- Upper bound is now() - interval '1 minute', evaluated by the DATABASE so
+  the comparison uses one clock. A client-side bound adds host skew as a
+  second source of the same bug.
+- The watermark advances to max(created_at) of rows actually landed, not to
+  the query bound. The gap between the two is where a late-committing
+  transaction lands.
+- No rows means no advance. An empty result is evidence of nothing.
+
+Three integration tests, and the middle one is the point:
+- a late-arriving row (event_timestamp 2019, created_at 5 min ago) IS
+  extracted;
+- an event_timestamp watermark WOULD have missed it - asserting the rejected
+  alternative fails is what makes ADR-018 enforced rather than opinion;
+- the safety lag holds back a row inserted moments ago.
+On well-behaved data both watermark choices give identical results, so
+without these the two implementations are indistinguishable.
+
+Observed under a real failure: the first extractor run died inside write_part
+     on expired credentials. The checkpoint did not advance (the write sits
+     after the yield) and no manifest was written, so there was no prefix for
+     downstream to mistake for a complete batch. Both guarantees held against
+     an unplanned failure rather than a simulated one.
+
+Watermark asymmetry worth knowing: patients advanced to 2026-11-09 (real
+     wall-clock, DEFAULT now() fired because COPY omitted created_at) while
+     patient_events advanced to 2024-01-01 (synthetic, the generator backdates
+     created_at to event time + 1-2 days). Different ingestion-time semantics
+     per table; the events table is the more realistic of the two.
+
+Test hygiene: an integration test that mutates shared state must clean up on
+     the FAILURE path, not just on success. A run that died before cleanup
+     left event_id 999000002 behind and every later run then failed on the
+     primary key rather than on the property under test - a misleading error
+     that looks like a bug in the thing being tested. Cleanup now sits in a
+     finally, and each test deletes its id before inserting.
+
+Fixed permanently: a `withaws` shell function runs a command with exported
+     credentials in a SUBSHELL, so they never leak into the parent. Third
+     occurrence of "Credentials were refreshed, but the refreshed credentials
+     are still expired" - env vars outliving their session and shadowing
+     AWS_PROFILE for boto3.
+
+Next: plan S19, ingest/cli.py. One entry point, three subcommands,
+      --full-refresh and --dry-run. Then the multi-year CMS backfill, which
+      settles the open question about the 5 NPIs absent from NPPES.
