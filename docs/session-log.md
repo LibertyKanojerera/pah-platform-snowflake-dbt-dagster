@@ -535,3 +535,48 @@ Fixed permanently: a `withaws` shell function runs a command with exported
 Next: plan S19, ingest/cli.py. One entry point, three subcommands,
       --full-refresh and --dry-run. Then the multi-year CMS backfill, which
       settles the open question about the 5 NPIs absent from NPPES.
+
+## S20 - 2026-11-11
+Did: plan S19. ingest/cli.py with cms, nppes, postgres and all subcommands,
+     --dry-run and --full-refresh throughout, installed as `pah-ingest`.
+     land_all_releases checkpoints PER RELEASE, so a crawl that dies on
+     release nine resumes at nine. Third use of the checkpoint store with
+     different semantics again - the watermark is a release year.
+     releases_by_year keys on temporal endDate, not the title, and collapses
+     the duplicate 2024 registration.
+
+Ran the full backfill. 12 release years (2013-2024; the 13th catalog entry
+     was the 2024 duplicate), 2,239 distinct NPIs, 22,701 landed rows. That
+     row count is inflated by ~8 copies of the 2023 release from earlier runs
+     and tests; distinct source rows are roughly 10,900. Staging deduplicates
+     at S23.
+     NPPES re-run: 2,239 rows, 2,220 found, 19 missed, 0 failed, entirely
+     from cache - 56 seconds against ~7.5 minutes of live requests.
+
+Settled the question open since S15. 19 NPIs appear in CMS and return
+     result_count 0 from NPPES. They are DEACTIVATED registrations, not
+     errors. The decisive case is 1598772931, which billed Medicare in every
+     release year from 2013 to 2024: CMS validated that NPI at claim time for
+     eleven consecutive years, so it certainly existed. NPPES excludes
+     deactivated NPIs entirely rather than returning them with an inactive
+     status, which makes deactivation indistinguishable from non-existence at
+     the API level. Five are 8-11 year prescribers, nine are 2-6 years, five
+     are one year.
+
+     The general point, and it is the one worth carrying: the dimension is
+     not a superset of the fact table's keys and cannot be. Historical claims
+     reference providers who have since left the registry. Retrospective
+     justification for the left join with nullable enrichment (ADR-017) and
+     for rejecting NPPES as the SCD2 source at S14 - snapshotting a registry
+     that silently drops members would record deletions it cannot explain.
+     S29's specialty grouping must tolerate a null taxonomy.
+
+Added: ingest/core/duck.py. boto3 resolves the SSO profile and hands DuckDB
+     the concrete session credentials, so reads of the landing zone no longer
+     need credentials exported into the shell. Retires the `withaws` dance and
+     the stale-environment failure that broke three runs. generate.py's
+     load_prescribers should be retrofitted to use it.
+
+Next: plan S20, observability. Structured logging to an ingestion log table:
+      rows read and written, duration, batch id. Audit provenance columns
+      across all three sources for consistency.

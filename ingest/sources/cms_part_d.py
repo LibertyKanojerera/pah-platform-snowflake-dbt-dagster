@@ -22,6 +22,7 @@ from typing import Any, Iterator, Mapping
 
 from ingest.core.http import HttpClient
 from ingest.core.log import get_logger
+from ingest.core.state import StateStore
 
 import csv
 from pathlib import Path
@@ -29,7 +30,8 @@ from datetime import date
 
 from ingest.core.landing import Batch, LandedPart, LandingWriter
 
-DEFAULT_VOCABULARY_PATH = Path("transform/seeds/drug_vocabulary.csv")
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_VOCABULARY_PATH = _REPO_ROOT / "transform" / "seeds" / "drug_vocabulary.csv"
 
 log = get_logger(__name__)
 
@@ -309,8 +311,7 @@ def land_release(
     *,
     dt: date | None = None,
     skip_sweep: bool = False,
-    return_rows: bool = False,
-) -> tuple[Batch, LandedPart] | tuple[Batch, LandedPart, list[dict[str, Any]]]:
+) -> tuple[Batch, LandedPart, list[dict[str, Any]]]:
     """Filter to the vocabulary, land one release as a single batch."""
     if not skip_sweep:
         sweep_for_unknown_drugs(client, dataset, vocabulary)
@@ -359,6 +360,84 @@ def land_release(
 
     bound.info("cms.release_landed", rows=len(collected), key=part.key)
 
-    if return_rows:
-        return batch, part, collected
-    return batch, part
+    return batch, part, collected
+
+
+def releases_by_year(datasets: list[CmsDataset]) -> dict[str, CmsDataset]:
+    """Year to dataset, keyed on temporal endDate rather than the title.
+
+    The 2024 release is registered twice under distinct UUIDs holding
+    identical data (verified by row count at plan S12). Duplicates are
+    collapsed to the first and warned about; a genuine disagreement would
+    show up as two different years and both would be kept.
+    """
+    by_year: dict[str, CmsDataset] = {}
+    for dataset in datasets:
+        try:
+            year = _release_year(dataset)
+        except ValueError:
+            log.warning("cms.dataset_without_temporal", uuid=dataset.uuid)
+            continue
+
+        if year in by_year:
+            log.warning(
+                "cms.duplicate_release",
+                year=year,
+                kept=by_year[year].uuid,
+                dropped=dataset.uuid,
+            )
+            continue
+        by_year[year] = dataset
+
+    return dict(sorted(by_year.items()))
+
+
+def land_all_releases(
+    client: HttpClient,
+    vocabulary: DrugVocabulary,
+    writer: LandingWriter,
+    store: StateStore,
+    *,
+    dt: date | None = None,
+    full_refresh: bool = False,
+    dry_run: bool = False,
+) -> dict[str, int]:
+    """Land every release newer than the checkpoint.
+
+    Checkpointed per release, not per run: a crawl that dies on release nine
+    resumes at nine. The watermark is a release year, which sorts
+    lexicographically because the years are four-digit and zero-padded.
+    """
+    releases = releases_by_year(discover_datasets(client))
+
+    watermark = None if full_refresh else store.read("cms_part_d")
+    last_done = watermark.watermark if watermark else None
+
+    pending = {
+        year: ds
+        for year, ds in releases.items()
+        if last_done is None or year > last_done
+    }
+
+    log.info(
+        "cms.backfill_plan",
+        releases=len(releases),
+        pending=len(pending),
+        last_done=last_done,
+        years=list(pending),
+    )
+
+    if dry_run:
+        return {year: -1 for year in pending}
+
+    landed: dict[str, int] = {}
+    for year, dataset in pending.items():
+        # One checkpoint per release, so an interruption loses at most one.
+        with store.checkpoint("cms_part_d") as checkpoint:
+            batch, part, _ = land_release(client, dataset, vocabulary, writer, dt=dt)
+            checkpoint.advance(
+                year, batch_id=batch.batch_id, allow_regression=full_refresh
+            )
+            landed[year] = part.row_count
+
+    return landed

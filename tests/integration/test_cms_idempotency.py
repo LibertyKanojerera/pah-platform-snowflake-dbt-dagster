@@ -45,9 +45,7 @@ def landed() -> list[list[dict]]:
     with HttpClient(source="cms_part_d", base_url="https://data.cms.gov") as client:
         dataset = resolve_dataset(discover_datasets(client), title_contains=RELEASE)
         for _ in range(2):
-            _batch, _part, rows = land_release(
-                client, dataset, vocab, writer, return_rows=True
-            )
+            _batch, _part, rows = land_release(client, dataset, vocab, writer)
             runs.append(rows)
 
     return runs

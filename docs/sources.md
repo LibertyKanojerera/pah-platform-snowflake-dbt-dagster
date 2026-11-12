@@ -381,3 +381,39 @@ Consequence for plan S23: a `read_parquet` glob over the landing zone must
 deduplicate on the natural key (Prscrbr_NPI, Brnd_Name, _cms_release_year) or
 select the most recent batch per release year. The staging layer owns this;
 the landing zone is deliberately append-only.
+
+### Prescribers absent from NPPES
+
+19 distinct NPIs appear in landed CMS data and return `result_count: 0` from
+NPPES. They are deactivated registrations, not errors.
+
+The decisive case is 1598772931, which billed Medicare in every release year
+from 2013 to 2024. CMS validated that NPI at claim time for eleven consecutive
+years, so it certainly existed. The NPPES API excludes deactivated NPIs
+entirely rather than returning them with an inactive status, which is why a
+deactivation is indistinguishable from a non-existent NPI at the API level.
+
+| Years active | NPIs |
+|---|---|
+| 8 to 11 | 5 |
+| 2 to 6 | 9 |
+| 1 | 5 |
+
+The long-tenured cases are consistent with retirement or death; the short ones
+with brief practice.
+
+**Consequence: the dimension is not a superset of the fact table's keys, and
+cannot be.** Historical claims reference providers who have since left the
+registry. This is why NPPES enrichment is a left join with nullable columns
+(ADR-017) and why NPPES was rejected as the SCD2 source (plan S14 decision):
+snapshotting a registry that silently drops members would record deletions it
+has no way to explain.
+
+Plan S29's specialty grouping must tolerate a null taxonomy rather than
+assuming every prescriber resolves.
+
+Landed 2026-11-11: 12 release years (2013 to 2024), 2,239 distinct
+prescriber NPIs, 22,701 landed rows. The row count is inflated by repeated
+batches of the 2023 release (~8 copies from earlier runs and tests);
+distinct source rows are roughly 10,900. Staging must deduplicate before any
+count is meaningful.

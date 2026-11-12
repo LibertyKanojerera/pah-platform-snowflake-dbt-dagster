@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 
 import pytest
 
@@ -103,7 +102,7 @@ def test_resolve_dataset_refuses_differing_temporal() -> None:
 
 def test_vocabulary_loads_from_the_dbt_seed() -> None:
     """The seed is the single source of truth, shared with dbt."""
-    vocab = DrugVocabulary.from_csv(Path("transform/seeds/drug_vocabulary.csv"))
+    vocab = DrugVocabulary.from_csv()
     assert "Treprostinil Diolamine" in vocab.generic_names
     assert ("Treprostinil/Neb Accessories", "Tyvaso Refill Kit") in vocab.known_pairs
 
@@ -111,7 +110,7 @@ def test_vocabulary_loads_from_the_dbt_seed() -> None:
 def test_sweep_raises_on_a_value_absent_from_the_vocabulary() -> None:
     """Exact-match filtering can only return what the vocabulary knows, so a
     new formulation would be omitted and look like a quiet quarter."""
-    vocab = DrugVocabulary.from_csv(Path("transform/seeds/drug_vocabulary.csv"))
+    vocab = DrugVocabulary.from_csv()
 
     def handler(path: str, params: dict) -> object:
         return [{"Gnrc_Name": "Treprostinil Novel Salt", "Brnd_Name": "Newdrug"}]
@@ -121,7 +120,7 @@ def test_sweep_raises_on_a_value_absent_from_the_vocabulary() -> None:
 
 
 def test_sweep_passes_when_every_value_is_known() -> None:
-    vocab = DrugVocabulary.from_csv(Path("transform/seeds/drug_vocabulary.csv"))
+    vocab = DrugVocabulary.from_csv()
 
     def handler(path: str, params: dict) -> object:
         return [{"Gnrc_Name": "Selexipag", "Brnd_Name": "Uptravi"}]

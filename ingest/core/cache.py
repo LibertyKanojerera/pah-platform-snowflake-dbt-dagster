@@ -129,10 +129,11 @@ class JsonCache:
 
     def purge(self) -> int:
         with self._connect() as con:
-            before = con.execute(
+            row = con.execute(
                 "SELECT count(*) FROM cache_entries WHERE namespace = ?",
                 [self.namespace],
-            ).fetchone()[0]
+            ).fetchone()
+            before = row[0] if row is not None else 0
             con.execute(
                 "DELETE FROM cache_entries WHERE namespace = ?", [self.namespace]
             )

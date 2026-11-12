@@ -256,8 +256,7 @@ def land_npis(
     rate: float = DEFAULT_RATE_PER_SECOND,
     cache: JsonCache | None = None,
     max_failure_rate: float = DEFAULT_MAX_FAILURE_RATE,
-    return_rows: bool = False,
-) -> tuple[Batch, LandedPart] | tuple[Batch, LandedPart, list[dict[str, Any]]]:
+) -> tuple[Batch, LandedPart, list[dict[str, Any]]]:
     batch = Batch.new("nppes", dt=dt)
     rows = [
         flatten(result)
@@ -291,4 +290,32 @@ def land_npis(
     )
 
     log.info("nppes.landed", key=part.key, rows=len(rows))
-    return (batch, part, rows) if return_rows else (batch, part)
+    return batch, part, rows
+
+
+DISTINCT_NPI_QUERY = """
+SELECT DISTINCT Prscrbr_NPI AS npi
+FROM read_parquet('s3://{bucket}/landing/cms_part_d/*/*/*.parquet')
+WHERE Prscrbr_NPI <> ''
+ORDER BY npi
+"""
+
+
+def distinct_npis_from_landing(bucket: str) -> list[str]:
+    """Every distinct prescriber NPI in the landed CMS data.
+
+    The landing zone is append-only and holds one batch per run, so the same
+    NPI appears many times. DISTINCT is the deduplication here; the staging
+    layer does the equivalent at plan S23.
+    """
+    from ingest.core.duck import s3_connection
+
+    with s3_connection() as con:
+        rows = con.execute(DISTINCT_NPI_QUERY.format(bucket=bucket)).fetchall()
+
+    npis = [r[0] for r in rows]
+    if not npis:
+        raise RuntimeError(f"no NPIs in s3://{bucket}/landing/cms_part_d/")
+
+    log.info("nppes.npis_resolved", count=len(npis))
+    return npis
