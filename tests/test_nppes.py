@@ -2,24 +2,23 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from ingest.core.cache import JsonCache
 from ingest.core.throttle import TokenBucket
 from ingest.sources.nppes import (
     NppesApiError,
     NppesLookup,
+    TooManyFailures,
     _location_address,
     _primary_taxonomy,
     flatten,
+    iter_lookups,
     lookup_npi,
 )
 from tests.conftest import FakeHttpClient
-
-from datetime import datetime, timedelta, timezone
-
-from ingest.core.cache import JsonCache
-from ingest.sources.nppes import TooManyFailures, iter_lookups
 
 
 def _tax(code: str, primary: bool = False, desc: str = "") -> dict:

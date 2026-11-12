@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 import pytest
 
 from ingest.sources.cms_part_d import (
@@ -126,3 +125,18 @@ def test_sweep_passes_when_every_value_is_known() -> None:
         return [{"Gnrc_Name": "Selexipag", "Brnd_Name": "Uptravi"}]
 
     sweep_for_unknown_drugs(FakeHttpClient(handler), _dataset(), vocab)
+
+
+def test_the_default_vocabulary_path_is_repo_anchored() -> None:
+    """Regression guard, twice over.
+
+    DEFAULT_VOCABULARY_PATH has twice reverted to a CWD-relative Path, which
+    resolves only from the repo root and fails under pytest from tests/,
+    under Dagster at plan S39, and in CI at plan S50. Asserting the property
+    here catches it from any working directory, rather than relying on
+    someone remembering to run the suite from elsewhere.
+    """
+    from ingest.sources.cms_part_d import DEFAULT_VOCABULARY_PATH
+
+    assert DEFAULT_VOCABULARY_PATH.is_absolute(), DEFAULT_VOCABULARY_PATH
+    assert DEFAULT_VOCABULARY_PATH.exists(), DEFAULT_VOCABULARY_PATH

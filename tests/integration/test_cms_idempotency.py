@@ -14,11 +14,10 @@ from __future__ import annotations
 import collections
 import os
 
-from ingest.core.landing import LandingWriter, row_hash
-
 import pytest
 
 from ingest.core.http import HttpClient
+from ingest.core.landing import LandingWriter, row_hash
 from ingest.sources.cms_part_d import (
     DrugVocabulary,
     discover_datasets,

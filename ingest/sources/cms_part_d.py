@@ -16,19 +16,17 @@ reconnaissance in docs/sources.md:
 
 from __future__ import annotations
 
+import csv
 import re
 from dataclasses import dataclass
+from datetime import date
+from pathlib import Path
 from typing import Any, Iterator, Mapping
 
 from ingest.core.http import HttpClient
+from ingest.core.landing import Batch, LandedPart, LandingWriter
 from ingest.core.log import get_logger
 from ingest.core.state import StateStore
-
-import csv
-from pathlib import Path
-from datetime import date
-
-from ingest.core.landing import Batch, LandedPart, LandingWriter
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_VOCABULARY_PATH = _REPO_ROOT / "transform" / "seeds" / "drug_vocabulary.csv"
