@@ -27,7 +27,9 @@ def test_row_hash_ignores_provenance_columns() -> None:
     """
     source = {"npi": "123", "drug": "Orenitram Er"}
     batch = Batch.new("cms_part_d")
-    enriched = add_provenance([source], batch=batch, file_name="part-0000.parquet")[0]
+    enriched = add_provenance(
+        [source], batch=batch, object_key=batch.key("part-0000.parquet")
+    )[0]
     assert row_hash(enriched) == row_hash(source)
 
 
@@ -37,7 +39,9 @@ def test_row_hash_changes_with_content() -> None:
 
 def test_add_provenance_sets_every_column() -> None:
     batch = Batch.new("cms_part_d")
-    row = add_provenance([{"npi": "123"}], batch=batch, file_name="p.parquet")[0]
+    row = add_provenance(
+        [{"npi": "123"}], batch=batch, object_key=batch.key("p.parquet")
+    )[0]
     for column in PROVENANCE_COLUMNS:
         assert column in row, column
     assert row["_batch_id"] == batch.batch_id
@@ -80,3 +84,20 @@ def test_manifest_is_written_after_the_data(fake_s3) -> None:
     manifest = json.loads(fake_s3.objects[manifest_key])
     assert manifest["row_count_total"] == 1
     assert manifest["parts"][0]["key"] == part.key
+
+
+def test_write_part_stamps_the_full_object_key(fake_s3) -> None:
+    """S20 audit finding 3. _file_name used to hold the bare part name, which
+    every batch shares, so a row could not locate its own file. It must hold
+    the object key that write_part actually wrote to.
+    """
+    import io
+
+    import pyarrow.parquet as pq
+
+    batch = Batch.new("cms_part_d")
+    writer = LandingWriter(bucket="b", s3_client=fake_s3)
+    part = writer.write_part([{"npi": "123"}], batch=batch)
+
+    table = pq.read_table(io.BytesIO(fake_s3.objects[f"b/{part.key}"]))
+    assert table.column("_file_name").to_pylist() == [part.key]

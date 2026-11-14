@@ -105,14 +105,14 @@ def row_hash(row: Mapping[str, Any]) -> str:
 
 
 def add_provenance(
-    rows: Sequence[Mapping[str, Any]], *, batch: Batch, file_name: str
+    rows: Sequence[Mapping[str, Any]], *, batch: Batch, object_key: str
 ) -> list[dict[str, Any]]:
     enriched: list[dict[str, Any]] = []
     for row in rows:
         out = dict(row)
         out["_source"] = batch.source
         out["_batch_id"] = batch.batch_id
-        out["_file_name"] = file_name
+        out["_file_name"] = object_key  # the full key, not the bare part name
         out["_ingested_at"] = batch.ingested_at
         out["_source_row_hash"] = row_hash(row)
         enriched.append(out)
@@ -147,9 +147,7 @@ class LandingWriter:
         file_name = f"part-{part_number:04d}.parquet"
         key = batch.key(file_name)
 
-        table = pa.Table.from_pylist(
-            add_provenance(rows, batch=batch, file_name=file_name)
-        )
+        table = pa.Table.from_pylist(add_provenance(rows, batch=batch, object_key=key))
 
         buffer = io.BytesIO()
         pq.write_table(table, buffer, compression=self.compression)
