@@ -32,6 +32,7 @@ from psycopg.rows import dict_row
 from ingest.core.config import get_postgres_config
 from ingest.core.landing import Batch, LandedPart, LandingWriter
 from ingest.core.log import get_logger
+from ingest.core.runlog import RunLog
 from ingest.core.state import StateStore
 
 log = get_logger(__name__)
@@ -103,6 +104,7 @@ def extract_table(
     writer: LandingWriter,
     store: StateStore,
     *,
+    runlog: RunLog,
     dt: date | None = None,
     full_refresh: bool = False,
 ) -> tuple[Batch, list[LandedPart]] | None:
@@ -111,28 +113,39 @@ def extract_table(
     The checkpoint is written inside the context manager's clean exit, so an
     exception anywhere in the landing path leaves the watermark where it was
     and the next run re-reads the same window. See the checkpoint store.
+
+    The run-log attempt wraps the checkpoint, so its row is written after the
+    checkpoint commits: success means landed AND checkpointed. Nothing new is
+    a no_new_rows row, never an absent one.
     """
     batch = Batch.new(table.source_id, dt=dt)
     bound = log.bind(table=table.name, batch_id=batch.batch_id)
 
-    with store.checkpoint(table.source_id) as checkpoint:
+    with runlog.checkpointed_attempt(
+        store, table.source_id, full_refresh=full_refresh
+    ) as (attempt, checkpoint):
+        attempt.bind_batch(batch)
         watermark = EPOCH if full_refresh else (checkpoint.value or EPOCH)
+        attempt.watermark_from = watermark
+        attempt.details["safety_lag"] = SAFETY_LAG
         bound.info("postgres.extract_start", watermark=watermark, full=full_refresh)
 
         parts: list[LandedPart] = []
         buffer: list[dict[str, Any]] = []
         high_water: datetime | None = None
-        total = 0
 
         with psycopg.connect(_dsn()) as conn:
             for row in _iter_rows(conn, table, watermark):
+                # Dropped at S21 under ADR-019; left in tonight on purpose.
                 row["_source_table"] = table.name
                 created_at = row["created_at"]
                 if high_water is None or created_at > high_water:
                     high_water = created_at
 
                 buffer.append(row)
-                total += 1
+                # Counted where rows arrive. rows_written comes from the
+                # landed parts, so the two can disagree if rows go missing.
+                attempt.rows_read += 1
 
                 if len(buffer) >= PART_SIZE:
                     parts.append(
@@ -148,9 +161,10 @@ def extract_table(
             # is no evidence about the window between it and the bound, and
             # moving it would discard that window permanently.
             bound.info("postgres.no_new_rows", watermark=watermark)
+            attempt.mark_no_new_rows()
             return None
 
-        writer.write_manifest(
+        manifest_key = writer.write_manifest(
             batch=batch,
             parts=parts,
             source_query={
@@ -160,10 +174,11 @@ def extract_table(
                 "watermark_to": high_water.isoformat() if high_water else None,
                 "safety_lag": SAFETY_LAG,
                 "full_refresh": full_refresh,
-                "rows": total,
+                "rows": attempt.rows_read,
                 "parts": len(parts),
             },
         )
+        attempt.record_landed(parts, manifest_key=manifest_key)
 
         assert high_water is not None
         checkpoint.advance(
@@ -171,10 +186,11 @@ def extract_table(
             batch_id=batch.batch_id,
             allow_regression=full_refresh,
         )
+        attempt.watermark_to = high_water.isoformat()
 
         bound.info(
             "postgres.extracted",
-            rows=total,
+            rows=attempt.rows_read,
             parts=len(parts),
             watermark_to=high_water.isoformat(),
         )
@@ -185,12 +201,15 @@ def extract_all(
     writer: LandingWriter,
     store: StateStore,
     *,
+    runlog: RunLog,
     dt: date | None = None,
     full_refresh: bool = False,
 ) -> dict[str, int]:
     """Extract every configured table. Returns rows landed per table."""
     results: dict[str, int] = {}
     for table in TABLES:
-        outcome = extract_table(table, writer, store, dt=dt, full_refresh=full_refresh)
+        outcome = extract_table(
+            table, writer, store, runlog=runlog, dt=dt, full_refresh=full_refresh
+        )
         results[table.name] = sum(p.row_count for p in outcome[1]) if outcome else 0
     return results

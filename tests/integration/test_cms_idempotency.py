@@ -24,6 +24,7 @@ from ingest.sources.cms_part_d import (
     land_release,
     resolve_dataset,
 )
+from tests.conftest import MemoryRunLog
 
 pytestmark = pytest.mark.integration
 
@@ -39,12 +40,17 @@ def landed() -> list[list[dict]]:
 
     vocab = DrugVocabulary.from_csv()
     writer = LandingWriter(bucket=BUCKET)
+    # In memory, so test runs never write to the real ingestion_log.
+    runlog = MemoryRunLog()
     runs: list[list[dict]] = []
 
     with HttpClient(source="cms_part_d", base_url="https://data.cms.gov") as client:
         dataset = resolve_dataset(discover_datasets(client), title_contains=RELEASE)
         for _ in range(2):
-            _batch, _part, rows = land_release(client, dataset, vocab, writer)
+            with runlog.attempt("cms_part_d") as attempt:
+                _batch, _part, rows = land_release(
+                    client, dataset, vocab, writer, attempt=attempt
+                )
             runs.append(rows)
 
     return runs

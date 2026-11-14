@@ -33,6 +33,7 @@ from ingest.core.cache import JsonCache
 from ingest.core.http import HttpClient
 from ingest.core.landing import Batch, LandedPart, LandingWriter
 from ingest.core.log import get_logger
+from ingest.core.runlog import Attempt
 from ingest.core.throttle import TokenBucket
 
 log = get_logger(__name__)
@@ -252,42 +253,56 @@ def land_npis(
     npis: Iterable[str],
     writer: LandingWriter,
     *,
+    attempt: Attempt,
     dt: date | None = None,
     rate: float = DEFAULT_RATE_PER_SECOND,
     cache: JsonCache | None = None,
     max_failure_rate: float = DEFAULT_MAX_FAILURE_RATE,
 ) -> tuple[Batch, LandedPart, list[dict[str, Any]]]:
+    """Look up every NPI and land the results as one batch.
+
+    The caller owns the attempt. rows_read is counted as lookups arrive, so a
+    run that TooManyFailures aborts records how far it got.
+    """
     batch = Batch.new("nppes", dt=dt)
-    rows = [
-        flatten(result)
-        for result in iter_lookups(
-            client,
-            npis,
-            rate=rate,
-            cache=cache,
-            max_failure_rate=max_failure_rate,
-        )
-    ]
+    attempt.bind_batch(batch)
+
+    rows: list[dict[str, Any]] = []
+    for result in iter_lookups(
+        client,
+        npis,
+        rate=rate,
+        cache=cache,
+        max_failure_rate=max_failure_rate,
+    ):
+        attempt.rows_read += 1
+        rows.append(flatten(result))
 
     if not rows:
         raise ValueError("no NPIs supplied")
 
+    summary = {
+        "requested": len(rows),
+        "found": sum(1 for r in rows if r["nppes_found"]),
+        "failed": sum(1 for r in rows if r.get("nppes_error")),
+        "missed": sum(
+            1 for r in rows if not r["nppes_found"] and not r.get("nppes_error")
+        ),
+        "ambiguous_taxonomy": sum(1 for r in rows if r.get("taxonomy_ambiguous")),
+    }
+
     part = writer.write_part(rows, batch=batch)
-    writer.write_manifest(
+    manifest_key = writer.write_manifest(
         batch=batch,
         parts=[part],
         source_query={
             "api_version": NPPES_VERSION,
             "rate_per_second": rate,
-            "requested": len(rows),
-            "found": sum(1 for r in rows if r["nppes_found"]),
-            "failed": sum(1 for r in rows if r.get("nppes_error")),
-            "missed": sum(
-                1 for r in rows if not r["nppes_found"] and not r.get("nppes_error")
-            ),
-            "ambiguous_taxonomy": sum(1 for r in rows if r.get("taxonomy_ambiguous")),
+            **summary,
         },
     )
+    attempt.record_landed([part], manifest_key=manifest_key)
+    attempt.details.update(summary, cache_hits=cache.hits if cache else 0)
 
     log.info("nppes.landed", key=part.key, rows=len(rows))
     return batch, part, rows

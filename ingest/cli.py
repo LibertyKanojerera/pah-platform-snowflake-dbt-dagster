@@ -6,19 +6,28 @@ decides what the data means belongs in the source modules, where it is tested.
 Ordering matters for `all`. CMS first, because the NPI set NPPES enriches is
 derived from landed CMS data; Postgres last, because it is independent and
 should not block the other two.
+
+Every invocation gets a run_id. It is bound into structlog's context, so every
+log line carries it, and passed to the run log, so every ingestion_log row
+does too. Attempts open around the work that lands a batch. Dry runs open
+none, because nothing was attempted.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+import uuid
 from datetime import date
+
+import structlog
 
 from ingest.core.cache import JsonCache
 from ingest.core.config import get_settings
 from ingest.core.http import HttpClient
 from ingest.core.landing import LandingWriter
 from ingest.core.log import configure_logging, get_logger
+from ingest.core.runlog import DuckDBRunLog, RunLog
 from ingest.core.state import DuckDBStateStore, StateStore
 from ingest.sources import app_postgres, cms_part_d, nppes
 
@@ -32,20 +41,34 @@ def _writer() -> LandingWriter:
     return LandingWriter(bucket=bucket)
 
 
-def run_cms(args: argparse.Namespace, writer: LandingWriter, store: StateStore) -> int:
+def run_cms(
+    args: argparse.Namespace,
+    writer: LandingWriter,
+    store: StateStore,
+    runlog: RunLog,
+) -> int:
     vocabulary = cms_part_d.DrugVocabulary.from_csv()
 
     with HttpClient(source="cms_part_d", base_url=cms_part_d.CMS_BASE_URL) as client:
         if args.year:
-            dataset = cms_part_d.resolve_dataset(
-                cms_part_d.discover_datasets(client), title_contains=args.year
-            )
             if args.dry_run:
+                dataset = cms_part_d.resolve_dataset(
+                    cms_part_d.discover_datasets(client), title_contains=args.year
+                )
                 log.info("cms.would_land", year=args.year, uuid=dataset.uuid)
                 return 0
-            _batch, part, _ = cms_part_d.land_release(
-                client, dataset, vocabulary, writer, dt=args.dt
-            )
+            # One release and no checkpoint on this path, so a plain attempt.
+            # The catalog lookup sits inside it, so a failed lookup still
+            # leaves a row.
+            with runlog.attempt(
+                "cms_part_d", full_refresh=args.full_refresh
+            ) as attempt:
+                dataset = cms_part_d.resolve_dataset(
+                    cms_part_d.discover_datasets(client), title_contains=args.year
+                )
+                _batch, part, _ = cms_part_d.land_release(
+                    client, dataset, vocabulary, writer, attempt=attempt, dt=args.dt
+                )
             return part.row_count
 
         landed = cms_part_d.land_all_releases(
@@ -53,6 +76,7 @@ def run_cms(args: argparse.Namespace, writer: LandingWriter, store: StateStore) 
             vocabulary,
             writer,
             store,
+            runlog=runlog,
             dt=args.dt,
             full_refresh=args.full_refresh,
             dry_run=args.dry_run,
@@ -61,22 +85,36 @@ def run_cms(args: argparse.Namespace, writer: LandingWriter, store: StateStore) 
 
 
 def run_nppes(
-    args: argparse.Namespace, writer: LandingWriter, store: StateStore
+    args: argparse.Namespace,
+    writer: LandingWriter,
+    store: StateStore,
+    runlog: RunLog,
 ) -> int:
-    npis = nppes.distinct_npis_from_landing(get_settings().landing_bucket)
+    bucket = get_settings().landing_bucket
     cache = None if args.no_cache else JsonCache(namespace="nppes")
 
-    log.info("nppes.plan", npis=len(npis), cached=cache is not None)
     if args.dry_run:
+        npis = nppes.distinct_npis_from_landing(bucket)
+        log.info("nppes.plan", npis=len(npis), cached=cache is not None)
         return 0
 
-    with HttpClient(source="nppes", base_url=nppes.NPPES_BASE_URL) as client:
-        _batch, part, _ = nppes.land_npis(client, npis, writer, dt=args.dt, cache=cache)
+    # The NPI read sits inside the attempt, so failing to read the landed CMS
+    # data is a failed nppes row rather than no row at all.
+    with runlog.attempt("nppes", full_refresh=args.full_refresh) as attempt:
+        npis = nppes.distinct_npis_from_landing(bucket)
+        log.info("nppes.plan", npis=len(npis), cached=cache is not None)
+        with HttpClient(source="nppes", base_url=nppes.NPPES_BASE_URL) as client:
+            _batch, part, _ = nppes.land_npis(
+                client, npis, writer, attempt=attempt, dt=args.dt, cache=cache
+            )
     return part.row_count
 
 
 def run_postgres(
-    args: argparse.Namespace, writer: LandingWriter, store: StateStore
+    args: argparse.Namespace,
+    writer: LandingWriter,
+    store: StateStore,
+    runlog: RunLog,
 ) -> int:
     if args.dry_run:
         for table in app_postgres.TABLES:
@@ -89,7 +127,7 @@ def run_postgres(
         return 0
 
     results = app_postgres.extract_all(
-        writer, store, dt=args.dt, full_refresh=args.full_refresh
+        writer, store, runlog=runlog, dt=args.dt, full_refresh=args.full_refresh
     )
     return sum(results.values())
 
@@ -153,8 +191,12 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     configure_logging(level=args.log_level, force_json=args.json_logs or None)
 
+    run_id = str(uuid.uuid4())
+    structlog.contextvars.bind_contextvars(run_id=run_id)
+
     writer = _writer()
     store = DuckDBStateStore()
+    runlog = DuckDBRunLog(run_id=run_id, triggered_by="cli")
 
     if args.command == "all":
         args.year = None
@@ -162,11 +204,11 @@ def main(argv: list[str] | None = None) -> int:
         total = 0
         for name in ("cms", "nppes", "postgres"):
             log.info("cli.source_start", source=name)
-            total += COMMANDS[name](args, writer, store)
+            total += COMMANDS[name](args, writer, store, runlog)
         log.info("cli.complete", rows=total)
         return 0
 
-    rows = COMMANDS[args.command](args, writer, store)
+    rows = COMMANDS[args.command](args, writer, store, runlog)
     log.info("cli.complete", source=args.command, rows=rows)
     return 0
 

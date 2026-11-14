@@ -26,6 +26,7 @@ from typing import Any, Iterator, Mapping
 from ingest.core.http import HttpClient
 from ingest.core.landing import Batch, LandedPart, LandingWriter
 from ingest.core.log import get_logger
+from ingest.core.runlog import Attempt, RunLog
 from ingest.core.state import StateStore
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -307,23 +308,37 @@ def land_release(
     vocabulary: DrugVocabulary,
     writer: LandingWriter,
     *,
+    attempt: Attempt,
     dt: date | None = None,
     skip_sweep: bool = False,
 ) -> tuple[Batch, LandedPart, list[dict[str, Any]]]:
-    """Filter to the vocabulary, land one release as a single batch."""
+    """Filter to the vocabulary, land one release as a single batch.
+
+    The caller owns the attempt: the CLI for a single --year release, and
+    land_all_releases for a backfill, where it must wrap the checkpoint. The
+    sweep runs inside it, so an unknown drug (ADR-015) is a failed row that
+    names the release.
+    """
+    year = _release_year(dataset)
+    attempt.details.update(release_year=year, dataset_uuid=dataset.uuid)
+
     if not skip_sweep:
         sweep_for_unknown_drugs(client, dataset, vocabulary)
 
-    year = _release_year(dataset)
     batch = Batch.new("cms_part_d", dt=dt)
+    attempt.bind_batch(batch)
     bound = log.bind(uuid=dataset.uuid, release_year=year, batch_id=batch.batch_id)
 
     collected: list[dict[str, Any]] = []
     per_generic: dict[str, int] = {}
+    # The same dict object, so a release that fails partway records the
+    # generics it had finished.
+    attempt.details["rows_per_generic"] = per_generic
 
     for generic in vocabulary.generic_names:
         filters = {"filter[Gnrc_Name]": generic}
         rows = list(iter_rows(client, dataset, filters=filters))
+        attempt.rows_read += len(rows)
 
         for row in rows:
             # Source-specific provenance, beyond the five LandingWriter adds.
@@ -343,7 +358,7 @@ def land_release(
         )
 
     part = writer.write_part(collected, batch=batch)
-    writer.write_manifest(
+    manifest_key = writer.write_manifest(
         batch=batch,
         parts=[part],
         source_query={
@@ -355,6 +370,7 @@ def land_release(
             "rows_per_generic": per_generic,
         },
     )
+    attempt.record_landed([part], manifest_key=manifest_key)
 
     bound.info("cms.release_landed", rows=len(collected), key=part.key)
 
@@ -396,6 +412,7 @@ def land_all_releases(
     writer: LandingWriter,
     store: StateStore,
     *,
+    runlog: RunLog,
     dt: date | None = None,
     full_refresh: bool = False,
     dry_run: bool = False,
@@ -405,8 +422,20 @@ def land_all_releases(
     Checkpointed per release, not per run: a crawl that dies on release nine
     resumes at nine. The watermark is a release year, which sorts
     lexicographically because the years are four-digit and zero-padded.
+
+    Every run that is not a dry run leaves at least one run-log row: one per
+    release attempted, one no_new_rows row when nothing is pending, and a
+    failed row if catalog discovery itself fails.
     """
-    releases = releases_by_year(discover_datasets(client))
+    try:
+        releases = releases_by_year(discover_datasets(client))
+    except Exception:
+        if dry_run:
+            raise
+        # Discovery is not a batch, but a run that dies here must still leave
+        # a row. attempt() records the failure and re-raises it.
+        with runlog.attempt("cms_part_d", full_refresh=full_refresh):
+            raise
 
     watermark = None if full_refresh else store.read("cms_part_d")
     last_done = watermark.watermark if watermark else None
@@ -428,14 +457,28 @@ def land_all_releases(
     if dry_run:
         return {year: -1 for year in pending}
 
+    if not pending:
+        with runlog.attempt("cms_part_d", full_refresh=full_refresh) as attempt:
+            attempt.watermark_from = last_done
+            attempt.details["releases_seen"] = len(releases)
+            attempt.mark_no_new_rows()
+        return {}
+
     landed: dict[str, int] = {}
     for year, dataset in pending.items():
         # One checkpoint per release, so an interruption loses at most one.
-        with store.checkpoint("cms_part_d") as checkpoint:
-            batch, part, _ = land_release(client, dataset, vocabulary, writer, dt=dt)
+        # Attempt outside, checkpoint inside: see ingest/core/runlog.py.
+        with runlog.checkpointed_attempt(
+            store, "cms_part_d", full_refresh=full_refresh
+        ) as (attempt, checkpoint):
+            attempt.watermark_from = checkpoint.value
+            batch, part, _ = land_release(
+                client, dataset, vocabulary, writer, attempt=attempt, dt=dt
+            )
             checkpoint.advance(
                 year, batch_id=batch.batch_id, allow_regression=full_refresh
             )
+            attempt.watermark_to = year
             landed[year] = part.row_count
 
     return landed
