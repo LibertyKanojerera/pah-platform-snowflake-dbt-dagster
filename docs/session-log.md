@@ -580,3 +580,50 @@ Added: ingest/core/duck.py. boto3 resolves the SSO profile and hands DuckDB
 Next: plan S20, observability. Structured logging to an ingestion log table:
       rows read and written, duration, batch id. Audit provenance columns
       across all three sources for consistency.
+
+## S?? - 2026-11-13
+Did: plan S20, blocks 2 to 4 of 5. ingest/core/runlog.py: ingestion_log in
+     the state DuckDB file, one row per attempt (success, no_new_rows,
+     failed). rows_read counted where rows arrive, rows_written from landed
+     parts, monotonic duration, run_id injected and bound into structlog
+     contextvars. checkpointed_attempt() is the only place the nesting is
+     written: attempt outside, checkpoint inside, so success means landed
+     AND checkpointed. 11 unit tests; three mutation checks each turned the
+     right test red (nesting swapped, _finalise_status moved out of the try,
+     bare raise deleted). Wired through cli.py and all three sources. A clean
+     exit that cannot be recorded truthfully writes a failed RunLogError row
+     before raising; CMS discovery failure and the NPPES NPI read also leave
+     failed rows.
+
+Fixed: S20 audit finding 3. _file_name held the bare part name, which every
+     batch shares; now the full object key. Test writes through FakeS3 and
+     reads the Parquet back; proven able to fail.
+
+Live runs: cms (no_new_rows, checkpoint 2024), postgres --full-refresh
+     (5,000 and 77,192 rows, 1 and 2 parts), postgres (two no_new_rows),
+     nppes (2,239 rows, all from cache, 19 missed). Six rows, rows_read equal
+     to rows_written on every success. Every stderr line carries run_id and
+     attempt_id, including landing and state lines that know nothing about
+     the run log.
+
+Reconciliation: tonight's three success batches match their manifests.
+     Only landed_not_logged remains, all pre-S20: cms 19, nppes 3, postgres
+     1 each. CMS 19 is consistent with 11 releases landed once plus 8 copies
+     of 2023 (S12, integration tests, the S19 backfill): finding 1, counted.
+     Finding 4 is in the bucket: all 2,239 NPPES rows landed tonight came
+     from cache and carry tonight's _ingested_at.
+
+Decided (ADR-019, drafted, not yet committed): sixth provenance column
+     _extracted_at; underscore naming rule (drop _source_table, rename
+     _raw_response); UTC-normalised row hashing; test landings under
+     landing_test/ with their own lifecycle rule. All implemented at S21.
+
+Corrected: mypy does not cover tests/; ruff and pytest --collect-only are
+     the checks there. Block 1, the contract test, slipped and opens the
+     next session.
+
+Next: finish plan S20. Block 1, the provenance contract test (first run is
+      the audit; compare with the predicted red list). Block 5: grep
+      architecture.md before editing, strict-xfail tz test, save ADR-019.
+      Then S21: provenance v2, then G2 (G2 slips to S22 rather than
+      compress).
