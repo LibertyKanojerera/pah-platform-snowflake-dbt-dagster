@@ -11,6 +11,8 @@ from typing import Any, Callable, Mapping
 
 import pytest
 
+from ingest.core.runlog import RunLog
+
 
 class FakeResponse:
     def __init__(self, payload: Any) -> None:
@@ -48,3 +50,19 @@ class FakeS3:
 @pytest.fixture
 def fake_s3() -> FakeS3:
     return FakeS3()
+
+
+class MemoryRunLog(RunLog):
+    """RunLog that keeps rows in a list, so tests never write to the real
+    ingestion_log. fail_writes simulates a broken log table.
+    """
+
+    def __init__(self, *, fail_writes: bool = False) -> None:
+        super().__init__(run_id="test-run", triggered_by="test")
+        self.rows: list[dict[str, Any]] = []
+        self.fail_writes = fail_writes
+
+    def _insert(self, row: dict[str, Any]) -> None:
+        if self.fail_writes:
+            raise RuntimeError("simulated log write failure")
+        self.rows.append(row)
