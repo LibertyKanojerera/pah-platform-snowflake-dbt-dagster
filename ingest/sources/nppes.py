@@ -26,7 +26,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any
 
 from ingest.core.cache import JsonCache
@@ -66,6 +66,8 @@ class NppesLookup:
     record: dict[str, Any] | None
     error: str = ""
     from_cache: bool = False
+    #: Set only on a cache hit: when the value was actually observed. ADR-019.
+    fetched_at: datetime | None = None
 
 
 #: Above this share of failures the run aborts. A batch where most lookups
@@ -97,7 +99,11 @@ def iter_lookups(
             else:
                 missed += 1
             yield NppesLookup(
-                npi=npi, found=entry.found, record=entry.payload, from_cache=True
+                npi=npi,
+                found=entry.found,
+                record=entry.payload,
+                from_cache=True,
+                fetched_at=entry.fetched_at,
             )
         else:
             # Only a real request consumes a token. A cache hit costs the
@@ -184,7 +190,7 @@ def _location_address(addresses: list[dict[str, Any]]) -> dict[str, Any] | None:
     return None
 
 
-def flatten(lookup: NppesLookup) -> dict[str, Any]:
+def _flatten_record(lookup: NppesLookup) -> dict[str, Any]:
     if not lookup.found or lookup.record is None:
         return {
             "npi": lookup.npi,
@@ -233,6 +239,19 @@ def flatten(lookup: NppesLookup) -> dict[str, Any]:
             record, sort_keys=True, separators=(",", ":")
         ),
     }
+
+
+def flatten(lookup: NppesLookup) -> dict[str, Any]:
+    """One landed row per lookup.
+
+    A cache hit carries _extracted_at: the value was observed when it was
+    fetched, not in this run. Live reads leave it unset and landing defaults
+    it to the batch time. ADR-019.
+    """
+    row = _flatten_record(lookup)
+    if lookup.fetched_at is not None:
+        row["_extracted_at"] = lookup.fetched_at.astimezone(timezone.utc)
+    return row
 
 
 def lookup_npi(client: HttpClient, npi: str) -> NppesLookup:

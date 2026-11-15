@@ -341,7 +341,7 @@ def land_release(
         attempt.rows_read += len(rows)
 
         for row in rows:
-            # Source-specific provenance, beyond the five LandingWriter adds.
+            # Source-specific provenance, beyond the six LandingWriter adds.
             # Included in the row hash, because the same NPI and brand in a
             # different release year is a different row.
             row["_cms_release_year"] = year

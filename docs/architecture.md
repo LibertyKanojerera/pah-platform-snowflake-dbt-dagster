@@ -31,6 +31,7 @@ Every landed row carries, in addition to the source fields:
 | `_batch_id` | The `batch=` UUID, so a row can be traced to its prefix |
 | `_file_name` | Relative file path within the external stage (`METADATA$FILENAME`), not the full bucket key |
 | `_ingested_at` | UTC timestamp of the extractor run |
+| `_extracted_at` | When the value was read from its source. Equals `_ingested_at` for live reads; earlier only when served from a cache (NPPES). Contract: `_extracted_at <= _ingested_at`. Excluded from the row hash. ADR-019. |
 | `_source_row_hash` | Hash of the source fields, for change detection |
 
 These are set at landing, never in dbt, so the staging layer can be rebuilt from raw without

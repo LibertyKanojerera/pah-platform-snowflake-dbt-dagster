@@ -50,6 +50,7 @@ PROVENANCE_COLUMNS = (
     "_batch_id",
     "_file_name",
     "_ingested_at",
+    "_extracted_at",  # when read from the source; ADR-019
     "_source_row_hash",
 )
 
@@ -134,6 +135,9 @@ def add_provenance(
         out["_batch_id"] = batch.batch_id
         out["_file_name"] = object_key  # the full key, not the bare part name
         out["_ingested_at"] = batch.ingested_at
+        # A source supplies this only when it knows better (an NPPES cache
+        # hit); anything read live in this run was extracted at the batch time.
+        out.setdefault("_extracted_at", batch.ingested_at)
         out["_source_row_hash"] = row_hash(row)
         enriched.append(out)
     return enriched
