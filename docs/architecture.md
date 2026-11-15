@@ -42,7 +42,7 @@ losing lineage.
 | Bucket | Purpose | Retention |
 |---|---|---|
 | `pah-platform-tfstate-<account>` | Terraform remote state, native S3 locking (`use_lockfile`) | Versioned, never expired, `prevent_destroy` |
-| `pah-platform-landing-<account>` | Raw landed objects | 90 days current, 30 days noncurrent, incomplete multipart uploads aborted at 7 days |
+| `pah-platform-landing-<account>` | Raw landed objects | 90 days current, 30 days noncurrent, incomplete multipart uploads aborted at 7 days | landing_test/: integration-test landings only, 7 days, noncurrent 1 day (ADR-019).
 
 Both buckets have versioning, SSE-S3 encryption at rest and all four public access blocks set.
 

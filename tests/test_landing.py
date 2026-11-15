@@ -113,3 +113,18 @@ def test_row_hash_is_independent_of_the_timezone_an_instant_is_expressed_in() ->
     utc = datetime(2024, 1, 1, tzinfo=timezone.utc)
     new_york = utc.astimezone(ZoneInfo("America/New_York"))
     assert row_hash({"created_at": utc}) == row_hash({"created_at": new_york})
+
+
+def test_batches_land_under_the_production_root_by_default() -> None:
+    assert Batch.new("cms_part_d").prefix.startswith("landing/")
+
+
+def test_an_unknown_landing_root_is_refused() -> None:
+    """Each allowed root has a lifecycle rule; a typo must not create a prefix
+    that never expires."""
+    from pydantic import ValidationError
+
+    from ingest.core.config import Settings
+
+    with pytest.raises(ValidationError):
+        Settings(landing_root="landing-test")

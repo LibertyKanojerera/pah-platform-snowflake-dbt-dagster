@@ -35,6 +35,7 @@ import boto3
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from ingest.core.config import get_settings
 from ingest.core.log import get_logger
 
 if TYPE_CHECKING:
@@ -66,20 +67,29 @@ class Batch:
     batch_id: str
     dt: date
     ingested_at: datetime
+    root: str = "landing"
 
     @classmethod
-    def new(cls, source: str, *, dt: date | None = None) -> Batch:
+    def new(
+        cls, source: str, *, dt: date | None = None, root: str | None = None
+    ) -> Batch:
         now = datetime.now(timezone.utc)
         return cls(
             source=source,
             batch_id=str(uuid.uuid4()),
             dt=dt or now.date(),
             ingested_at=now,
+            # From settings, so no call site changes: the integration
+            # conftest sets LANDING_ROOT=landing_test. ADR-019.
+            root=root or get_settings().landing_root,
         )
 
     @property
     def prefix(self) -> str:
-        return f"landing/{self.source}/dt={self.dt.isoformat()}/batch={self.batch_id}"
+        return (
+            f"{self.root}/{self.source}"
+            f"/dt={self.dt.isoformat()}/batch={self.batch_id}"
+        )
 
     def key(self, filename: str) -> str:
         return f"{self.prefix}/{filename}"

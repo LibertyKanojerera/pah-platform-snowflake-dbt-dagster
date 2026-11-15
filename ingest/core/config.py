@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import os
 from functools import lru_cache
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     project: str = "pah-platform"
 
     landing_bucket: str = Field(default="", description="S3 bucket for landed objects.")
+
+    #: Top-level prefix for landed objects. A Literal on purpose: each allowed
+    #: value has its own lifecycle rule in infra/terraform/landing.tf, so a
+    #: typo cannot land data under a prefix that never expires. ADR-019.
+    landing_root: Literal["landing", "landing_test"] = "landing"
 
     @property
     def use_secrets_manager(self) -> bool:

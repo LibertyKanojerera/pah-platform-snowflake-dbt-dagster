@@ -62,5 +62,25 @@ resource "aws_s3_bucket_lifecycle_configuration" "landing" {
     }
   }
 
+  # Integration-test landings (ADR-019). Short-lived by design: nothing reads
+  # them after the run, and the rule above filters on landing/, so without a
+  # rule of their own they would never expire.
+  rule {
+    id     = "expire-test-landing-objects"
+    status = "Enabled"
+
+    filter {
+      prefix = "landing_test/"
+    }
+
+    expiration {
+      days = 7
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 1
+    }
+  }
+
   depends_on = [aws_s3_bucket_versioning.landing]
 }
