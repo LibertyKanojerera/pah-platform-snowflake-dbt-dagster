@@ -581,7 +581,7 @@ Next: plan S20, observability. Structured logging to an ingestion log table:
       rows read and written, duration, batch id. Audit provenance columns
       across all three sources for consistency.
 
-## S?? - 2026-11-13
+## S20b - 2026-11-13
 Did: plan S20, blocks 2 to 4 of 5. ingest/core/runlog.py: ingestion_log in
      the state DuckDB file, one row per attempt (success, no_new_rows,
      failed). rows_read counted where rows arrive, rows_written from landed
@@ -627,3 +627,41 @@ Next: finish plan S20. Block 1, the provenance contract test (first run is
       architecture.md before editing, strict-xfail tz test, save ADR-019.
       Then S21: provenance v2, then G2 (G2 slips to S22 rather than
       compress).
+
+S20 audit baseline (contract test, first run): 11 failed, 10 passed, matching
+     the prediction exactly. file_name_not_key: cms 22,701, nppes 5,578
+     (1,100 + 2 x 2,239, the same 3 batches the reconciliation flagged),
+     patients 5,000, events 77,192 (S19 batches only; Saturday's pass).
+     No unpredicted findings.
+
+## S21 - 2026-11-15
+Did: finished plan S20 and plan S21 (provenance v2, ADR-019). Five commits:
+     a078e41 contract test + architecture drift + ADR-019 (S20 blocks 1, 5);
+     41f5d06 finding 2, UTC-normalised row hash (strict xfail flipped, then
+     mutation-checked); a90da1c finding 5, _source_table dropped and
+     _raw_response renamed _nppes_raw_response; 2ca7145 finding 4,
+     _extracted_at as the sixth provenance column, cache hits carry their
+     fetch time (mutation: removing one line turned both cache tests red);
+     d069fd9 finding 1, integration tests land under landing_test/ with a
+     7-day lifecycle rule (guard test fails with the conftest removed).
+     67 unit tests, 30 integration tests collected.
+
+Added beyond ADR-019: landing_root is Literal["landing", "landing_test"],
+     so only prefixes with a lifecycle rule can be configured. Recorded in
+     the ADR.
+
+Unplanned: terraform apply for the lifecycle rule also tried to clear the
+     GitHub OIDC provider's thumbprint (AWS fills one in when the config sets
+     none). AWS restored it (ab9d0263...), so the plan drifted on every run.
+     Fixed with lifecycle ignore_changes = [thumbprint_list] in
+     iam_github_oidc.tf; plan now clean. aws-smoke passed on every push
+     after the apply, so OIDC was unaffected.
+     Lesson: the plan said 3 to change, not 1; that was the stop signal.
+
+G2 moved to its own session by plan, not by slip.
+
+Next: plan S22, gate G2, unhurried. Move the state file aside (.pre-g2),
+      empty landing/, pah-ingest all, contract test all green,
+      reconciliation zero, idempotency test then reconciliation again
+      (still zero proves landing_test/ isolation), NPPES _extracted_at
+      evidence. No landings before the wipe.
