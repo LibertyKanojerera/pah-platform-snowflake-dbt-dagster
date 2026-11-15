@@ -92,15 +92,35 @@ class LandedPart:
     sha256: str
 
 
+def _canonical(value: Any) -> str:
+    """json.dumps fallback for values JSON cannot represent natively.
+
+    Aware datetimes are converted to UTC first: str() keeps whatever offset a
+    datetime was built with, which for psycopg is the session TimeZone, so the
+    same instant would hash differently on a host with a different setting
+    (S20 audit finding 2, ADR-019). datetime is checked before date because it
+    subclasses it. Everything else, Decimal included, falls back to str().
+    """
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.isoformat()
+        return value.astimezone(timezone.utc).isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    return str(value)
+
+
 def row_hash(row: Mapping[str, Any]) -> str:
     """Stable hash of the source fields.
 
     Canonical JSON with sorted keys, so the same logical row hashes the same
-    across runs regardless of dict ordering. `default=str` keeps dates and
-    Decimals hashable rather than raising.
+    across runs regardless of dict ordering. Values JSON cannot represent go
+    through _canonical, so an instant hashes the same in any timezone.
     """
     payload = {k: v for k, v in row.items() if k not in PROVENANCE_COLUMNS}
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    canonical = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), default=_canonical
+    )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
