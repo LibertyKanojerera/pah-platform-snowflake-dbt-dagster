@@ -2,13 +2,7 @@
 
 ## Landing zone key layout
 
-```
-landing/<source>/dt=YYYY-MM-DD/batch=<uuid>/part-0000.parquet
-                                           /_manifest.json
-```
-
-`<source>` is one of `cms_part_d`, `nppes`, `app_postgres`, matching the module names under
-`ingest/sources/`.
+`<source>` is one of `cms_part_d`, `nppes`, `app_postgres_patients`, `app_postgres_patient_events`.
 
 **`dt=` and `batch=` are Hive-style partition keys.** DuckDB `httpfs` and a Snowflake external
 stage both understand this convention, so a query filtered on a date range prunes to the matching
@@ -23,8 +17,9 @@ that silently replaced the other. It also means a bad batch can be identified an
 without touching the batches around it.
 
 **`_manifest.json`** records row count, the source query or API parameters, and the extraction
-timestamp. A landed batch can then be reconciled without re-reading the Parquet, and the manifest
-is what the ingestion log table is populated from.
+timestamp. A landed batch can then be reconciled without re-reading the Parquet. The ingestion log
+(`ingestion_log`, see `ingest/core/runlog.py`) is written by the extractor, one row per attempt, so
+it also records failures and no-ops, which have no manifest.
 
 ## Provenance columns
 
@@ -32,9 +27,9 @@ Every landed row carries, in addition to the source fields:
 
 | Column | Meaning |
 |---|---|
-| `_source` | Source module name, matching `<source>` in the key |
+| `_source` | Source id, matching `<source>` in the key. One per Postgres table (`app_postgres_patients`, `app_postgres_patient_events`), so every source has the same key depth and one glob reads them all. |
 | `_batch_id` | The `batch=` UUID, so a row can be traced to its prefix |
-| `_file_name` | Object key the row was read from |
+| `_file_name` | Relative file path within the external stage (`METADATA$FILENAME`), not the full bucket key |
 | `_ingested_at` | UTC timestamp of the extractor run |
 | `_source_row_hash` | Hash of the source fields, for change detection |
 

@@ -101,3 +101,16 @@ def test_write_part_stamps_the_full_object_key(fake_s3) -> None:
 
     table = pq.read_table(io.BytesIO(fake_s3.objects[f"b/{part.key}"]))
     assert table.column("_file_name").to_pylist() == [part.key]
+
+
+@pytest.mark.xfail(strict=True, reason="S20 audit finding 2; fixed at S21 (ADR-019)")
+def test_row_hash_is_independent_of_the_timezone_an_instant_is_expressed_in() -> None:
+    """psycopg builds timestamptz in the session TimeZone, and str() keeps
+    whatever offset a datetime carries. The same instant must hash the same.
+    """
+    from datetime import datetime, timezone
+    from zoneinfo import ZoneInfo
+
+    utc = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    new_york = utc.astimezone(ZoneInfo("America/New_York"))
+    assert row_hash({"created_at": utc}) == row_hash({"created_at": new_york})
