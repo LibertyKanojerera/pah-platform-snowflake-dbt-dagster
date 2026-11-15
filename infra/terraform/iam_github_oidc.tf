@@ -11,6 +11,14 @@ variable "github_repo" {
 }
 
 resource "aws_iam_openid_connect_provider" "github" {
+  # AWS fills in a thumbprint when none is supplied and restores it after
+  # Terraform clears it, so without this the attribute drifts on every plan.
+  # GitHub tokens are validated against AWS's trusted root CAs, not the
+  # thumbprint, so ignoring it changes nothing about authentication.
+  lifecycle {
+    ignore_changes = [thumbprint_list]
+  }
+
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
   thumbprint_list = []
@@ -73,9 +81,9 @@ data "aws_iam_policy_document" "github_actions_landing_read" {
 }
 
 resource "aws_iam_role" "github_actions" {
-  name               = "${var.project}-github-actions"
-  description        = "Assumed by GitHub Actions via OIDC. No stored credentials."
-  assume_role_policy = data.aws_iam_policy_document.github_actions_assume_role.json
+  name                 = "${var.project}-github-actions"
+  description          = "Assumed by GitHub Actions via OIDC. No stored credentials."
+  assume_role_policy   = data.aws_iam_policy_document.github_actions_assume_role.json
   max_session_duration = 3600
 }
 
