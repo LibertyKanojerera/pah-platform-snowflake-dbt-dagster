@@ -146,11 +146,11 @@ def test_flatten_carries_the_canonical_raw_response() -> None:
     canonicalised so the row hash is stable across key ordering.
     """
     row = flatten(NppesLookup(npi="1", found=True, record=_record()))
-    assert json.loads(row["_raw_response"]) == _record()
+    assert json.loads(row["_nppes_raw_response"]) == _record()
 
     shuffled = dict(reversed(list(_record().items())))
     other = flatten(NppesLookup(npi="1", found=True, record=shuffled))
-    assert row["_raw_response"] == other["_raw_response"]
+    assert row["_nppes_raw_response"] == other["_nppes_raw_response"]
 
 
 # --- API response handling -----------------------------------------------

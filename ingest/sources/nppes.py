@@ -17,7 +17,7 @@ NPPES returns a nested document whose useful content requires two choices:
 which taxonomy is the specialty, and which address is the practice location.
 Those rules encode judgment, so they belong in version-controlled code with
 tests rather than being re-expressed in SQL in every model that needs them.
-`_raw_response` keeps canonical JSON of the whole record, so nothing is lost
+`_nppes_raw_response` keeps canonical JSON of the whole record, so nothing is lost
 and staging can reach anything this flattening omits.
 """
 
@@ -190,7 +190,7 @@ def flatten(lookup: NppesLookup) -> dict[str, Any]:
             "npi": lookup.npi,
             "nppes_found": False,
             "nppes_error": lookup.error,
-            "_raw_response": "",
+            "_nppes_raw_response": "",
         }
 
     record = lookup.record
@@ -229,7 +229,9 @@ def flatten(lookup: NppesLookup) -> dict[str, Any]:
         "location_postal_code": postal[:5],
         "location_missing": location is None,
         # Canonical so the row hash is stable across key ordering.
-        "_raw_response": json.dumps(record, sort_keys=True, separators=(",", ":")),
+        "_nppes_raw_response": json.dumps(
+            record, sort_keys=True, separators=(",", ":")
+        ),
     }
 
 

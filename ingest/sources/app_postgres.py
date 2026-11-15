@@ -136,8 +136,6 @@ def extract_table(
 
         with psycopg.connect(_dsn()) as conn:
             for row in _iter_rows(conn, table, watermark):
-                # Dropped at S21 under ADR-019; left in tonight on purpose.
-                row["_source_table"] = table.name
                 created_at = row["created_at"]
                 if high_water is None or created_at > high_water:
                     high_water = created_at
