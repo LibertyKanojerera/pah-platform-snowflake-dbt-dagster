@@ -12,10 +12,10 @@ a batch, so merging the second batch after the first is a no-op.
 from __future__ import annotations
 
 import collections
-import os
 
 import pytest
 
+from ingest.core.config import get_settings
 from ingest.core.http import HttpClient
 from ingest.core.landing import LandingWriter, row_hash
 from ingest.sources.cms_part_d import (
@@ -29,7 +29,9 @@ from tests.conftest import MemoryRunLog
 pytestmark = pytest.mark.integration
 
 RELEASE = "2023-12-31"
-BUCKET = os.environ.get("LANDING_BUCKET", "")
+# Same source as the CLI, so .env is enough. Reading os.environ alone made
+# this skip silently at G2: a skip is not a pass. ADR-010.
+BUCKET = get_settings().landing_bucket
 
 
 @pytest.fixture(scope="module")
