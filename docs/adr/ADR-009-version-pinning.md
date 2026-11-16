@@ -77,3 +77,19 @@ everywhere it runs.
 **A better answer than most.** "Why are you not on the latest dbt?" has a real answer here:
 because the community adapter sets the ceiling, and a project that only builds on the paid
 target is not portable. That reasoning is the artifact, not the version numbers.
+
+
+## Amendment 2026-11-16: re-resolved at the start of Phase 2; v2 declined again
+
+Re-resolved with zero models written: dbt-core 1.12.7, dbt-duckdb 1.11.1,
+dbt-snowflake 1.12.5, duckdb 1.5.5 (unchanged). Patch releases only; the
+ingest suite and the S3 reconciliation stayed green.
+
+dbt v2 is now generally available and the default for new installations.
+Declined for this project, for now, on three grounds: its built-in DuckDB
+adapter is in beta and lacks features of dbt-duckdb; its bundled DuckDB
+driver cannot load extensions such as httpfs, which every source here reads
+through, without a separately installed driver; and sqlfluff's dbt templater
+is not compatible with it. require-dbt-version in dbt_project.yml enforces
+the v1 line. Revisit after G4. Moving from v1 to v2 is itself a migration,
+and a candidate section for the write-up.
