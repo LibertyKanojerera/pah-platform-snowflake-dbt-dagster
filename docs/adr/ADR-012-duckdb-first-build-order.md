@@ -76,3 +76,13 @@ takes one session, the other is banked.
 **Snowflake-specific work is concentrated and cannot slip.** Zero-copy clone CI and the Time
 Travel drill only exist while the trial is live. They sit in Phase 4 and must not drift into
 buffer.
+
+## Amendment 2026-11-16: lint dialect
+
+The sqlfluff dialect moves from snowflake to duckdb. It was set in September,
+before this ADR put DuckDB first. Through Phase 3 every model compiles through
+the duckdb target, so the templater produces DuckDB SQL, and parsing it as
+Snowflake would give false positives, starting with how dbt-duckdb renders
+external sources. Phase 4 adds a second lint with the Snowflake dialect
+against the Snowflake target: the "lint twice" end state for a dual-target
+project.

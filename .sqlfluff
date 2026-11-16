@@ -1,6 +1,7 @@
 [sqlfluff]
 templater = dbt
-dialect = snowflake
+# DuckDB first (ADR-012 amendment); a Snowflake-dialect lint returns in Phase 4.
+dialect = duckdb
 max_line_length = 120
 exclude_rules = ST06, RF01
 

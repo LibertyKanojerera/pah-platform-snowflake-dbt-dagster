@@ -1,0 +1,38 @@
+name: pah_platform
+version: "1.0.0"
+config-version: 2
+profile: pah
+
+# ADR-009: dbt Core 2.0 was rejected; this makes the rejection enforceable.
+require-dbt-version: [">=1.12.0", "<2.0.0"]
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+snapshot-paths: ["snapshots"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+
+target-path: target
+clean-targets: ["target", "dbt_packages"]
+
+# Layer defaults. Individual models override them (incremental facts later).
+# Schemas are routed by macros/generate_schema_name.sql: written as-is on
+# the prod target, collapsed into the target's own schema everywhere else.
+models:
+  pah_platform:
+    staging:
+      +materialized: view
+      +schema: staging
+    intermediate:
+      +materialized: ephemeral
+    marts:
+      +materialized: table
+      +schema: marts
+
+seeds:
+  pah_platform:
+    +schema: seeds
+
+snapshots:
+  pah_platform:
+    +schema: snapshots

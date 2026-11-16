@@ -42,3 +42,6 @@ tmp*/
 nano.*.save
 *.swp
 *~
+
+# dbt writes an anonymous-usage id into the profiles dir; per user, never committed
+transform/.user.yml

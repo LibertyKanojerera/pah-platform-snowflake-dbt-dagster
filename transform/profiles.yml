@@ -1,0 +1,12 @@
+# Committed on purpose: no secrets live here. dbt runs from the repo root, so
+# paths are relative to it. Anything machine-specific comes from env vars.
+pah:
+  target: "{{ env_var('DBT_TARGET', 'dev') }}"
+  outputs:
+    dev:
+      type: duckdb
+      # The warehouse has its own file, separate from the ingest state file:
+      # DuckDB allows one writer per file, so dbt and the CLI never share one.
+      path: "{{ env_var('DBT_DUCKDB_PATH', 'data/warehouse.duckdb') }}"
+      schema: dev
+      threads: 4
