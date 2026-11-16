@@ -665,3 +665,25 @@ Next: plan S22, gate G2, unhurried. Move the state file aside (.pre-g2),
       reconciliation zero, idempotency test then reconciliation again
       (still zero proves landing_test/ isolation), NPPES _extracted_at
       evidence. No landings before the wipe.
+
+## S?? - 2026-11-??
+Did: GATE G2. Moved the state file aside (.pre-g2), emptied landing/
+     (~56 objects, 27 batches), pah-ingest all from zero in <time>.
+     Landed: cms 12 batches / <n> rows (predicted 10,871), nppes 2,239
+     (all from cache), patients 5,000, events 77,192. ingestion_log: 15
+     success rows, one run_id, rows_read = rows_written throughout.
+     Contract test 21/21. _extracted_at: nppes <n> from cache, others 0.
+     Reconciliation zero before and after the integration suite (30/30);
+     the idempotency test's batches landed in landing_test/ only.
+     ingest/reconcile.py added, exits 1 on any anomaly. Tagged g2.
+Next: Phase 2, dbt. Project config, dbt debug green on the duckdb target.
+
+G2 nearly passed on a skip. First integration run: 25 passed, 5 skipped.
+     The idempotency fixture read LANDING_BUCKET from os.environ, which .env
+     does not populate, so the test skipped and the post-suite reconciliation
+     was vacuous (nothing landed). Caught by the landing_test/ manifest count
+     (0, predicted 2 or more). Re-run with the bucket set: 30 passed,
+     landing_test/ 2 manifests, reconciliation zero. Fixed the fixture to read
+     settings; the g2 tag moved to that commit. Gate runs now use -rs, so a
+     skip prints its reason. ADR-010 again: a skip is not a pass.
+Corrected estimate: the clean run took 2m51s, not 10 to 20 minutes.
