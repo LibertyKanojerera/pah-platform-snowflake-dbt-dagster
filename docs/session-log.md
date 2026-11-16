@@ -687,3 +687,39 @@ G2 nearly passed on a skip. First integration run: 25 passed, 5 skipped.
      settings; the g2 tag moved to that commit. Gate runs now use -rs, so a
      skip prints its reason. ADR-010 again: a skip is not a pass.
 Corrected estimate: the clean run took 2m51s, not 10 to 20 minutes.
+
+## S22b - 2026-11-16
+Did: Phase 2 opened, dbt project config. Correction first: transform/
+     dbt_project.yml and profiles.yml were both empty. The September claim
+     that profiles.yml already carried a duckdb output was wrong; both were
+     written from scratch.
+
+     Versions re-resolved with zero models (ADR-009 amendment): dbt-core
+     1.12.7, dbt-duckdb 1.11.1, dbt-snowflake 1.12.5, duckdb 1.5.5
+     unchanged. dbt v2 is now GA; declined again (DuckDB adapter in beta,
+     bundled driver cannot load httpfs, sqlfluff templater incompatible).
+     require-dbt-version enforces the v1 line.
+
+     profiles.yml: duckdb dev target on data/warehouse.duckdb, its own file
+     separate from the ingest state file (one writer per DuckDB file).
+     dbt runs from the repo root with DBT_PROJECT_DIR and DBT_PROFILES_DIR
+     set to transform. dbt_project.yml: staging views, ephemeral
+     intermediates, table marts; schema routing via
+     generate_schema_name_for_env (custom schemas on prod only, everything in
+     the target's schema elsewhere). sqlfluff dialect snowflake -> duckdb
+     (ADR-012 amendment).
+
+     Toolchain check with a throwaway model, never committed: the sqlfluff
+     hook failed on uppercase keywords (CP01 x2), the first time the dbt
+     templater compiled this project; passed after the fix. dbt build landed
+     ('dev', 'zz_toolchain_check', 'VIEW'): view proves the materialisation,
+     dev rather than dev_staging proves the routing override. Dropped and
+     deleted after.
+
+     Also: *.duckdb.* ignored (an untracked backup was one git add -A from
+     a public repo); transform/.user.yml ignored.
+
+Next: sources. _sources.yml per source reading the landed Parquet through
+      dbt-duckdb, freshness on _extracted_at. Opens with the S3 credentials
+      question: DuckDB's credential chain could not read the SSO cache at S19.
+      Each new shell: export DBT_PROJECT_DIR=transform DBT_PROFILES_DIR=transform
