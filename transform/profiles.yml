@@ -10,3 +10,15 @@ pah:
       path: "{{ env_var('DBT_DUCKDB_PATH', 'data/warehouse.duckdb') }}"
       schema: dev
       threads: 4
+      extensions: [httpfs, aws]
+      secrets:
+        - type: s3
+          provider: credential_chain
+          # Environment first (CI, Dagster), then the SSO profile (local).
+          # DuckDB resolves both itself; nothing is exported into the shell.
+          chain: "env;sso"
+          profile: "{{ env_var('AWS_PROFILE', 'pah-admin') }}"
+          region: us-east-1
+          # Parsing and linting must work without a live AWS session. Only
+          # queries that touch S3 need credentials.
+          validation: none

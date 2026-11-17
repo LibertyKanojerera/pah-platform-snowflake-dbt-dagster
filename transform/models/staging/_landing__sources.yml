@@ -1,0 +1,78 @@
+version: 2
+
+sources:
+  - name: landing
+    description: >
+      Parquet landed by the ingest CLI, one table per source id, read straight
+      from S3 with nothing copied into the warehouse. Only committed batches
+      are visible: a batch prefix without _manifest.json is incomplete by
+      construction (ingest/core/landing.py) and is filtered out here, at the
+      boundary, so no model can read one. The filter matches the batch=
+      directory in the path, not the rows' _batch_id, because the rule is
+      about prefixes.
+    meta:
+      # dbt-duckdb fills {name} with the table name. Jinja renders first. Keep
+      # this string free of any other curly braces: it goes through str.format.
+      external_location: >-
+        (select * exclude (filename)
+        from read_parquet(
+        's3://{{ env_var("LANDING_BUCKET") }}/landing/{name}/*/*/*.parquet',
+        union_by_name = true, hive_partitioning = false, filename = true)
+        where regexp_extract(filename, 'batch=([^/]+)/', 1) in (
+        select json_extract_string(content, '$.batch_id')
+        from read_text('s3://{{ env_var("LANDING_BUCKET") }}/landing/{name}/*/*/_manifest.json')))
+    tables:
+      - name: cms_part_d
+        description: >
+          CMS Medicare Part D prescribers by provider and drug, filtered to the
+          four PAH molecules. One batch per release year. No freshness check:
+          releases are annual, and detecting a new one is the release sensor's
+          job, not freshness.
+        loaded_at_field: _extracted_at
+        columns: &provenance
+          - name: _source
+            description: Source id. Equals the table name and the landing prefix.
+            data_tests: [not_null]
+          - name: _batch_id
+            description: The batch the row was landed in; matches the batch= directory.
+            data_tests: [not_null]
+          - name: _file_name
+            description: Full object key of the Parquet part the row came from.
+            data_tests: [not_null]
+          - name: _ingested_at
+            description: When the batch was landed. One value per batch.
+            data_tests: [not_null]
+          - name: _extracted_at
+            description: >
+              When the value was read from its source. Equal to _ingested_at for
+              live reads; earlier only when served from a cache (ADR-019).
+            data_tests: [not_null]
+          - name: _source_row_hash
+            description: SHA-256 of the source fields, provenance excluded. Change detection.
+            data_tests: [not_null]
+
+      - name: nppes
+        description: >
+          NPPES registry enrichment, one row per NPI per batch. Cached for 30
+          days, so _extracted_at can trail _ingested_at by up to that much.
+        loaded_at_field: _extracted_at
+        freshness:
+          warn_after: {count: 31, period: day}
+          error_after: {count: 45, period: day}
+        columns: *provenance
+
+      - name: app_postgres_patients
+        description: Synthetic application patients, extracted on a created_at watermark (ADR-018).
+        loaded_at_field: _extracted_at
+        freshness:
+          warn_after: {count: 7, period: day}
+          error_after: {count: 30, period: day}
+        columns: *provenance
+
+      - name: app_postgres_patient_events
+        description: Synthetic application patient events, extracted on a created_at watermark (ADR-018).
+        loaded_at_field: _extracted_at
+        freshness:
+          warn_after: {count: 7, period: day}
+          error_after: {count: 30, period: day}
+        columns: *provenance
