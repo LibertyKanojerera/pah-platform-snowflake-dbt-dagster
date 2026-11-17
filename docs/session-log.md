@@ -723,3 +723,22 @@ Next: sources. _sources.yml per source reading the landed Parquet through
       dbt-duckdb, freshness on _extracted_at. Opens with the S3 credentials
       question: DuckDB's credential chain could not read the SSO cache at S19.
       Each new shell: export DBT_PROJECT_DIR=transform DBT_PROFILES_DIR=transform
+
+## S23 - 2026-11-17
+Did: dbt sources over the landing zone. One source, landing, four tables, one
+     source-level external_location template ({name} filled by dbt-duckdb).
+     Credentials: DuckDB credential_chain 'env;sso' with the SSO profile
+     named explicitly; works where S19's default chain failed, so nothing is
+     exported into the shell. validation none, so parsing and linting need no
+     AWS session.
+     Commit marker enforced at the boundary, matched on the batch= path rather
+     than the rows' _batch_id. Proven: an orphan copy of a committed part
+     doubled raw NPPES to 4,478; the source still read 2,239.
+     Counts through source() matched G2 exactly: 10,871 / 2,239 / 5,000 /
+     77,192. Freshness on _extracted_at works over S3 (the README is silent):
+     nppes, patients and events PASS, cms deliberately unchecked. 24 source
+     tests pass. ADR-020.
+Next: S24, seeds. drug_vocabulary.csv (already in transform/seeds, shared with
+      ingest) and specialty_category_map.csv, with tests.
+      Each new shell: export DBT_PROJECT_DIR=transform DBT_PROFILES_DIR=transform
+      LANDING_BUCKET=pah-platform-landing-036999274035
