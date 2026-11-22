@@ -742,3 +742,49 @@ Next: S24, seeds. drug_vocabulary.csv (already in transform/seeds, shared with
       ingest) and specialty_category_map.csv, with tests.
       Each new shell: export DBT_PROJECT_DIR=transform DBT_PROFILES_DIR=transform
       LANDING_BUCKET=pah-platform-landing-036999274035
+
+## S24 - 2026-11-22
+Did: plan S24, seeds. transform/seeds/_seeds.yml declares both seeds with
+     column types and tests. drug_vocabulary: 12 rows, not_null on all five
+     columns, accepted_values on molecule, route, product_type. Singular
+     tests: pairs unique; every landed CMS pair is in the vocabulary
+     (mutation: deleting Tyvaso Refill Kit fails with 1 row).
+     tests/test_seed_contract.py holds the CSV header the ingest CLI reads
+     to the column list dbt declares (mutation: extra column fails).
+     specialty_category_map: 43 NUCC codes to 7 categories, generated from
+     NPPES's own labels with a completeness check; unique, not_null,
+     accepted_values; assert_every_found_provider_taxonomy_is_mapped
+     (mutation: deleting 207RP1001X fails with 1 row). Category totals
+     2,220 providers and 395,469 claims, matching the prediction.
+     dbt data tests: 40 (24 source, 13 seed, 3 singular). Commit b7db0a6.
+Deviation: no drug_route_reference.csv. Route has lived in drug_vocabulary
+     at pair grain since S12; a second route seed would be a second source
+     of truth. ADR deferred to S28, together with the decision on ADR-002's
+     longest-prefix matcher.
+Decided: specialty is the NUCC taxonomy code from NPPES, not CMS
+     Prscrbr_Type. No default category; other and unspecified are mapped
+     per code. Critical care (including 207LC0200X, anesthesiology) and
+     sleep go with pulmonology; pediatric subspecialties (2080P0202X,
+     pediatric cardiology) with pediatrics; geriatrics with primary care.
+     advanced_practice is a profession, not a specialty, mirroring
+     Prscrbr_Type so the comparison is like for like. The generator ran
+     inline and is not committed: the CSV is the source of truth, and a
+     new code is a hand-added row that the coverage test forces.
+Finding: the source of specialty triples primary care's share of PAH
+     prescribing (6,534 claims under NPPES, 20,275 under Prscrbr_Type).
+     The Databricks build could only use Prscrbr_Type, so the port's answer
+     to research question one will differ. Evidence in docs/sources.md;
+     carry it into the migration write-up.
+Gap: sqlfluff reported no files to check at commit time with three .sql
+     files staged under transform/tests/; its files filter excludes them.
+     The singular tests have never been linted. Fix at S25 block 0.
+Gotcha: pre-commit run --all-files checks tracked files only, so new files
+     get their first check at commit time. dbt test reports a failing row
+     count, not the rows; --store-failures prints a query for them.
+Open: S28. With route in the vocabulary and pair coverage tested in both
+     directions, does the longest-prefix matcher still earn its place, as
+     the spec's documented fallback, or does ADR-002 retire?
+Next: plan S25, staging views, first of two sessions. Block 0 widens the
+      sqlfluff hook to transform/tests/. Settle where the append-only
+      landing becomes one row per natural key, and the casing convention
+      for CMS's mixed-case column names.
