@@ -37,8 +37,6 @@ This is an improvement, not a rescue. "Built portable from the start, then prove
 second warehouse" is a stronger claim than "built on Snowflake, added DuckDB for CI." The
 dual-target decision becomes the architectural thesis rather than a cost footnote.
 
-**You have a complete, public, working artifact at the end of Phase 3, before the trial starts.**
-
 ## Phase gates
 
 | Gate | After | Condition |
@@ -46,7 +44,7 @@ dual-target decision becomes the architectural thesis rather than a cost footnot
 | G1 | S6 | `terraform apply` clean; GitHub Actions assumes an AWS role with no stored keys |
 | G2 | S21 | All three sources land Parquet to S3 idempotently; repeated-run test green |
 | G3 | S37 | `dbt build` green on DuckDB; docs generate; exposures resolve |
-| G4 | S51 | Public repo, live Streamlit URL, hosted dbt docs. **Start applying to roles here.** |
+| G4 | S51 | Public repo, live Streamlit URL, hosted dbt docs |
 | G5 | S63 | `dbt build` green on Snowflake; slim CI runs on a zero-copy clone |
 | G6 | S70 | Migration write-up published; ADR log complete |
 
