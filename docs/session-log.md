@@ -788,3 +788,20 @@ Next: plan S25, staging views, first of two sessions. Block 0 widens the
       sqlfluff hook to transform/tests/. Settle where the append-only
       landing becomes one row per natural key, and the casing convention
       for CMS's mixed-case column names.
+
+Block 0 (done 2026-11-22): sqlfluff-lint covers transform/tests/ (was
+     models only). sqlfluff fix applied LT09, LT02, CP02 to the three
+     singular tests; RF04 renamed alias mapping to specialty_map. CP01
+     mutation proved the hook fails on a test file. CI runs no lint; that
+     belongs to plan S50. Convention: column names lowercase and unquoted,
+     CMS's included; DuckDB resolves them regardless of case, and Snowflake
+     folds unquoted names to upper case anyway.
+
+Gotcha: DuckDB's SSO credential provider reads the cached SSO token but
+     does not refresh it. Once the token goes stale, dbt pauses at
+     connection, then fails at the first S3 read with HTTP 403 "No
+     credentials are provided" (validation: none defers the check). One AWS
+     CLI call with the profile (aws sts get-caller-identity --profile
+     pah-admin) refreshes the cache; aws sso login is needed only when the
+     login session itself has expired. Applies to any long-running local
+     process that reads S3 through DuckDB (Dagster dev, ingest/core/duck.py).
