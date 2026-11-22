@@ -805,3 +805,60 @@ Gotcha: DuckDB's SSO credential provider reads the cached SSO token but
      pah-admin) refreshes the cache; aws sso login is needed only when the
      login session itself has expired. Applies to any long-running local
      process that reads S3 through DuckDB (Dagster dev, ingest/core/duck.py).
+Did: plan S25, staging part one. stg_cms__part_d_claims and
+     stg_nppes__providers, views under models/staging/<system>/. dbt_utils
+     1.4.1 via a packages.yml range plus package-lock.yml (the pyproject
+     plus uv.lock model, ADR-009). 21 model tests; 61 dbt data tests in
+     total. Commit efddd8c.
+Recon: CMS 12 releases, 2013 to 2024, one batch and one dataset UUID each;
+     _extracted_at and _ingested_at constant within a batch. Rows grow
+     from 25 (2013) to 2,076 (2024). Grain (npi, brand, generic, year)
+     unique at 10,871; (npi, brand, year) is unique too, so generic is
+     redundant today but kept as CMS's documented grain. Every CMS column
+     is text: no nulls, no non-numeric values, no decimal point in
+     whole-number columns, decimal scale within 2, volumes never blank,
+     minimum Tot_Clms 11. GE65 flags blank exactly the values they cover.
+Verified: staging claims 398,062, equal to the S24 CMS total. Each typed
+     count equals rows minus recon blanks (beneficiaries 694, GE65 claims
+     8,551, GE65 beneficiaries 61). NPPES: 2,239 rows, 2,220 found, 0
+     failed, 1,362 certification dates; earliest enumeration 2005-05-23,
+     the first day NPIs were issued.
+Mutations: CMS grain, inverted GE65 expression (10,871) and
+     accepted_range at 12 fail together, exactly 3. NPPES taxonomy
+     not_null fails with 19 (the misses) without its where filter.
+Decided: staging is where the append-only landing becomes current state,
+     a consequence of ADR-020. CMS: the latest batch of each release year
+     wins whole, because a release is a full snapshot and per-row latest
+     would keep rows a restatement removed. NPPES: latest successful
+     lookup per NPI; a failure never displaces a hit or a miss. Blank
+     strings become null except in grain columns. Casts are strict:
+     nullif only where CMS documents suppression, so an unexpected blank
+     fails loudly. total_claims >= 11 is tested because CMS excludes rows
+     built from fewer than 11 claims.
+Brief change: Phase 4's CMS load must replace a whole release year, not
+     MERGE row by row, or Snowflake keeps rows a restatement removed and
+     the two targets disagree. ADR-021 at the end of S26.
+Plan changes: dbt_utils pulled forward from S35. Accessories leave in the
+     intermediate layer (S28), not staging; docs/sources.md updated.
+     _nppes_raw_response stays in landing. ST06 predicted, did not fire;
+     .sqlfluff unchanged.
+Proof gap: both dedup rules are no-ops on today's data (one batch per
+     unit) and cannot fail. S26 adds dbt unit tests with crafted
+     restatements; scope addition, justified by ADR-010.
+Finding: CMS suppresses Tot_Benes on 10,177 of 10,871 rows (93.6%) across
+     all years. The Databricks build's 88.1% was 2024 alone. S36's band
+     test needs per-year shares.
+Hypothesis, check at S28: nebulized and infused prostacyclins are largely
+     billed under Part B (DME), so Part D mostly sees oral and dry-powder
+     products, and row growth tracks Orenitram (2014), Uptravi (2016) and
+     Tyvaso DPI (2022). If true, Part D's route mix reflects benefit
+     design as well as prescribing, which research question one must say.
+Candidate: a credential_process profile, so DuckDB calls aws configure
+     export-credentials and the CLI refreshes the SSO token itself. Test in
+     a housekeeping slot.
+Open: S28, the longest-prefix matcher question, unchanged.
+Next: plan S26, staging part two. stg_app__patients (latest updated_at per
+      patient_id) and stg_app__patient_events (one row per event_id). Then
+      dbt unit tests for all four rules with crafted restatements, with up
+      to 15 minutes to confirm a source with external_location can be
+      mocked. Then ADR-021.
