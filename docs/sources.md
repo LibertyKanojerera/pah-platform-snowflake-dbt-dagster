@@ -298,7 +298,8 @@ receiving both the drug and its accessories, inflating the measure research
 question one depends on. Hence the `product_type` column, which keys off
 brand rather than generic, since `Treprostinil/Neb Accessories` is a drug in
 2013 and an accessory in 2023. Accessories must be excluded from claim counts
-at the staging or intermediate layer (plan S25).
+in the intermediate layer, where the vocabulary join supplies
+product_type (plan S28). Staging keeps every landed row.
 
 #### Molecule validity windows
 

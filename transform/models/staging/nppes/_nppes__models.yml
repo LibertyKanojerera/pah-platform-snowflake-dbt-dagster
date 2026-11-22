@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: stg_nppes__providers
+    description: >
+      NPPES enrichment, one row per NPI ever looked up: the latest successful
+      lookup, where success is a hit or a definitive miss. A failed lookup
+      (nppes_error set) is never cached and is retried next run, so it never
+      displaces a successful row; it appears only for an NPI with no
+      successful lookup yet. Misses stay (nppes_found false, the rest null)
+      because CMS prescribing is the fact and NPPES the dimension: an
+      unenriched prescriber is a nullable join, not a dropped claim. The raw
+      API response stays in landing.
+    columns:
+      - name: npi
+        description: The NPI looked up; one row each.
+        data_tests: [not_null, unique]
+      - name: nppes_found
+        description: >
+          False for a miss (NPPES returned nothing, typically a deactivated
+          NPI) or a failure.
+        data_tests: [not_null]
+      - name: nppes_error
+        description: Exception text for a failed lookup; null for a hit or a miss.
+      - name: enumeration_type
+        description: NPI-1 individual, NPI-2 organisation. Every PAH prescriber observed is NPI-1.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [NPI-1, NPI-2]
+      - name: npi_status
+        description: A for active.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [A]
+      - name: taxonomy_code
+        description: >
+          Primary NUCC taxonomy code, the specialty key into
+          specialty_category_map. Null for misses.
+        data_tests:
+          - not_null:
+              config:
+                where: nppes_found

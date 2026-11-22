@@ -1,0 +1,80 @@
+version: 2
+
+models:
+  - name: stg_cms__part_d_claims
+    description: >
+      CMS Medicare Part D prescribing for the four PAH molecules, one row per
+      prescriber, brand, generic and data year, from the latest landed batch
+      of each release (a release is a full snapshot of its year). Renamed and
+      typed only; no rows are filtered. Accessory rows are still present and
+      leave in the intermediate layer, where the vocabulary join supplies
+      product_type (plan S28). Blank counts are CMS suppression and become
+      nulls: a blank Tot_Benes means 1 to 10 beneficiaries.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - prescriber_npi
+              - brand_name
+              - generic_name
+              - data_year
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >-
+              (ge65_suppression_flag is null) = (ge65_total_claims is not null)
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: >-
+              (ge65_beneficiaries_suppression_flag is null)
+              = (ge65_total_beneficiaries is not null)
+    columns:
+      - name: prescriber_npi
+        description: Prescriber NPI as CMS reports it. Luhn validation is plan S27.
+        data_tests: [not_null]
+      - name: brand_name
+        description: CMS Brnd_Name exactly as stored; joins drug_vocabulary.brnd_name.
+        data_tests: [not_null]
+      - name: generic_name
+        description: CMS Gnrc_Name exactly as stored; joins drug_vocabulary.gnrc_name.
+        data_tests: [not_null]
+      - name: data_year
+        description: >
+          Calendar year the claims cover, from the release's temporal end
+          date (_cms_release_year in landing).
+        data_tests: [not_null]
+      - name: cms_prescriber_type
+        description: >
+          CMS's specialty label. Not the specialty of record: that is the
+          NPPES taxonomy, which triples primary care's share relative to this
+          field (docs/sources.md, Specialty).
+      - name: total_claims
+        description: >
+          Claims including refills. CMS excludes provider-drug rows built
+          from fewer than 11 claims, so 11 is a floor.
+        data_tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 11
+      - name: total_30day_fills
+        data_tests: [not_null]
+      - name: total_day_supply
+        data_tests: [not_null]
+      - name: total_drug_cost
+        data_tests: [not_null]
+      - name: total_beneficiaries
+        description: Null when CMS suppresses the count (1 to 10 beneficiaries).
+      - name: is_beneficiaries_suppressed
+        description: True when Tot_Benes was blank, meaning CMS suppressed it.
+        data_tests: [not_null]
+      - name: ge65_suppression_flag
+        description: "* means fewer than 11; # means suppressed to prevent derivation. Null when not suppressed."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["*", "#"]
+      - name: ge65_beneficiaries_suppression_flag
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["*", "#"]
