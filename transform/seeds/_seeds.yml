@@ -1,0 +1,75 @@
+version: 2
+
+seeds:
+  - name: drug_vocabulary
+    description: >
+      The twelve CMS generic/brand pairs for the four PAH molecules, swept from
+      all 13 releases (ADR-015). Read by the ingest CLI at landing, where an
+      unknown pair raises, and seeded here, where its content rules live. The
+      grain is the pair: product_type keys off brand, and a generic name can
+      move between releases. The column list below is the structural contract
+      the ingest reader is held to (tests/test_seed_contract.py).
+    config:
+      column_types:
+        gnrc_name: varchar
+        brnd_name: varchar
+        molecule: varchar
+        route: varchar
+        product_type: varchar
+    columns:
+      - name: gnrc_name
+        description: CMS Gnrc_Name exactly as stored. Distinct values are the ingest filter predicates.
+        data_tests: [not_null]
+      - name: brnd_name
+        description: CMS Brnd_Name exactly as stored. Determines route and product type.
+        data_tests: [not_null]
+      - name: molecule
+        description: The active molecule.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [treprostinil, selexipag, iloprost, epoprostenol]
+      - name: route
+        description: Route of administration, the second axis of research question one.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [oral, inhaled, parenteral]
+      - name: product_type
+        description: drug, or accessory (nebulizer supplies; excluded from claim counts).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [drug, accessory]
+
+  - name: specialty_category_map
+    description: >
+      NUCC taxonomy code (each provider's primary taxonomy in NPPES) to the
+      specialty category research question one groups by. Every code present
+      in the landed data is mapped explicitly, with no default category: a
+      new code fails assert_every_found_provider_taxonomy_is_mapped instead
+      of disappearing into a bucket. "other" and "unspecified" are choices
+      made per code, not fallbacks. taxonomy_desc is NPPES's own label,
+      copied for readability; the code is the key.
+    config:
+      column_types:
+        taxonomy_code: varchar
+        taxonomy_desc: varchar
+        specialty_category: varchar
+    columns:
+      - name: taxonomy_code
+        description: NUCC Health Care Provider Taxonomy code. Stable; the join key.
+        data_tests: [not_null, unique]
+      - name: taxonomy_desc
+        description: NPPES's label for the code. Readability only; never joined on.
+        data_tests: [not_null]
+      - name: specialty_category
+        description: The grouping used by the specialty x route analysis.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [pulmonology, cardiology, advanced_practice, primary_care, pediatrics, unspecified, other]

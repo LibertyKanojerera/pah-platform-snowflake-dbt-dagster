@@ -417,3 +417,32 @@ prescriber NPIs, 22,701 landed rows. The row count is inflated by repeated
 batches of the 2023 release (~8 copies from earlier runs and tests);
 distinct source rows are roughly 10,900. Staging must deduplicate before any
 count is meaningful.
+
+### Specialty
+
+Specialty comes from the NUCC taxonomy code of each provider's primary taxonomy
+in NPPES, not from CMS's `Prscrbr_Type`. The code set is standard, it is what
+the SCD2 provider snapshot tracks, and the code (not the description, which
+NUCC rewords) is the key. `transform/seeds/specialty_category_map.csv` maps all
+43 codes present to seven categories; there is no default, and a new code fails
+`assert_every_found_provider_taxonomy_is_mapped`. Critical care and sleep
+medicine are grouped with pulmonology.
+
+The Databricks build had no NPPES, so its specialty can only have come from
+`Prscrbr_Type`. Grouped the same way, the two fields agree everywhere except
+primary care:
+
+| Category | NPPES taxonomy (claims) | CMS Prscrbr_Type (claims) |
+|---|---|---|
+| Pulmonology (with critical care, sleep) | 217,000 | 212,714 |
+| Cardiology | 111,056 | 111,531 |
+| Advanced practice | 49,644 | 50,075 |
+| Primary care | 6,534 | 20,275 |
+| Pediatrics | 1,934 | 1,381 |
+
+CMS labels about 13,700 claims "Internal Medicine" that NPPES files under a
+subspecialty, so the source of specialty triples primary care's share of PAH
+prescribing. The totals reconcile: NPPES-matched claims are 395,469, CMS's
+398,062, and the 2,593 difference belongs to the 19 NPIs NPPES no longer
+returns (deactivated; see above). CMS totals also mix years in which a
+provider's Prscrbr_Type can change.

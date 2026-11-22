@@ -1,0 +1,44 @@
+taxonomy_code,taxonomy_desc,specialty_category
+207LC0200X,"Anesthesiology, Critical Care Medicine",pulmonology
+207RC0200X,"Internal Medicine, Critical Care Medicine",pulmonology
+207RP1001X,"Internal Medicine, Pulmonary Disease",pulmonology
+207RS0012X,"Internal Medicine, Sleep Medicine",pulmonology
+207RA0001X,"Internal Medicine, Advanced Heart Failure and Transplant Cardiology",cardiology
+207RA0002X,"Internal Medicine, Adult Congenital Heart Disease",cardiology
+207RC0000X,"Internal Medicine, Cardiovascular Disease",cardiology
+207RC0001X,"Internal Medicine, Clinical Cardiac Electrophysiology",cardiology
+207RI0011X,"Internal Medicine, Interventional Cardiology",cardiology
+363A00000X,Physician Assistant,advanced_practice
+363AM0700X,"Physician Assistant, Medical",advanced_practice
+363AS0400X,"Physician Assistant, Surgical",advanced_practice
+363L00000X,Nurse Practitioner,advanced_practice
+363LA2100X,"Nurse Practitioner, Acute Care",advanced_practice
+363LA2200X,"Nurse Practitioner, Adult Health",advanced_practice
+363LC0200X,"Nurse Practitioner, Critical Care Medicine",advanced_practice
+363LF0000X,"Nurse Practitioner, Family",advanced_practice
+363LG0600X,"Nurse Practitioner, Gerontology",advanced_practice
+363LP0200X,"Nurse Practitioner, Pediatrics",advanced_practice
+363LP0222X,"Nurse Practitioner, Pediatrics, Critical Care",advanced_practice
+363LP2300X,"Nurse Practitioner, Primary Care",advanced_practice
+364S00000X,Clinical Nurse Specialist,advanced_practice
+364SA2200X,"Clinical Nurse Specialist, Adult Health",advanced_practice
+364SF0001X,"Clinical Nurse Specialist, Family Health",advanced_practice
+364SG0600X,"Clinical Nurse Specialist, Gerontology",advanced_practice
+207Q00000X,Family Medicine,primary_care
+207R00000X,Internal Medicine,primary_care
+207RG0300X,"Internal Medicine, Geriatric Medicine",primary_care
+208000000X,Pediatrics,pediatrics
+2080A0000X,"Pediatrics, Adolescent Medicine",pediatrics
+2080P0202X,"Pediatrics, Pediatric Cardiology",pediatrics
+174400000X,Specialist,unspecified
+390200000X,Student in an Organized Health Care Education/Training Program,unspecified
+163WM0705X,"Registered Nurse, Medical-Surgical",other
+207K00000X,Allergy & Immunology,other
+207RA0201X,"Internal Medicine, Allergy & Immunology",other
+207RG0100X,"Internal Medicine, Gastroenterology",other
+207RH0003X,"Internal Medicine, Hematology & Oncology",other
+207RR0500X,"Internal Medicine, Rheumatology",other
+207SG0205X,"Medical Genetics, Ph.D. Medical Genetics",other
+207VE0102X,"Obstetrics & Gynecology, Reproductive Endocrinology",other
+2081P0004X,"Physical Medicine & Rehabilitation, Spinal Cord Injury Medicine",other
+208M00000X,Hospitalist,other
