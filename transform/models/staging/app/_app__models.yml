@@ -1,0 +1,85 @@
+version: 2
+
+models:
+  - name: stg_app__patients
+    description: >
+      Synthetic PAH cohort from the application database, one row per
+      patient at its latest version (latest updated_at; ADR-021). Every
+      patient's prescriber is a real CMS prescriber, so the cohort joins to
+      CMS and NPPES. Outcomes come from stg_app__patient_events.
+    columns:
+      - name: patient_id
+        data_tests: [not_null, unique]
+      - name: prescriber_npi
+        description: A CMS prescriber; the generator draws only from the landed CMS set.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_cms__part_d_claims')
+                field: prescriber_npi
+      - name: index_date
+        description: Therapy start; survival time is measured from here.
+        data_tests: [not_null]
+      - name: initial_route
+        description: Route of the first therapy, a covariate in research question two.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [oral, inhaled, parenteral]
+      - name: copay_tier
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [1, 2, 3, 4]
+                quote: false
+      - name: age_band
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["18-64", "65-74", "75+"]
+      - name: sex
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [F, M]
+
+  - name: stg_app__patient_events
+    description: >
+      Patient events from the application database, one row per event
+      (ADR-021): a fill every 30 days (days_supply 30) and one
+      discontinuation for each patient who stopped (days_supply null). A
+      patient with no discontinuation is censored.
+    data_tests:
+      - dbt_utils.expression_is_true:
+          arguments:
+            expression: "(event_type = 'fill') = (days_supply is not null)"
+    columns:
+      - name: event_id
+        data_tests: [not_null, unique]
+      - name: patient_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_app__patients')
+                field: patient_id
+      - name: event_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [fill, discontinuation]
+      - name: event_timestamp
+        description: Midnight UTC on the event date. Derive dates in UTC.
+        data_tests: [not_null]
+      - name: route
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [oral, inhaled, parenteral]

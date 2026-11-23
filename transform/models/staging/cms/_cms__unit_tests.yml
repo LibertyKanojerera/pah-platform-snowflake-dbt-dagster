@@ -1,0 +1,56 @@
+version: 2
+
+unit_tests:
+  - name: cms_latest_batch_replaces_its_release_year_whole
+    description: >
+      2022 is landed twice. The newer batch restates prescriber 1111111111
+      (20 claims to 25) and drops prescriber 2222222222. Both must follow the
+      newer batch; per-row latest would wrongly keep the dropped 2222222222
+      row. 2021's only batch is older than both 2022 batches and must stay.
+    model: stg_cms__part_d_claims
+    given:
+      - input: source('landing', 'cms_part_d')
+        format: sql
+        rows: |
+          select
+              v.prscrbr_npi,
+              'Uptravi' as brnd_name,
+              'Selexipag' as gnrc_name,
+              v._cms_release_year,
+              'Doe' as prscrbr_last_org_name,
+              'Jane' as prscrbr_first_name,
+              'Boston' as prscrbr_city,
+              'MA' as prscrbr_state_abrvtn,
+              '25' as prscrbr_state_fips,
+              'Pulmonary Disease' as prscrbr_type,
+              'S' as prscrbr_type_src,
+              v.tot_clms,
+              '20.0' as tot_30day_fills,
+              '600' as tot_day_suply,
+              '1000.00' as tot_drug_cst,
+              '' as tot_benes,
+              '*' as ge65_sprsn_flag,
+              '' as ge65_tot_clms,
+              '' as ge65_tot_30day_fills,
+              '' as ge65_tot_day_suply,
+              '' as ge65_tot_drug_cst,
+              '*' as ge65_bene_sprsn_flag,
+              '' as ge65_tot_benes,
+              'dataset-uuid' as _cms_dataset_uuid,
+              'cms_part_d' as _source,
+              v._batch_id,
+              'landing/key' as _file_name,
+              cast(v._extracted_at as timestamp with time zone) as _ingested_at,
+              cast(v._extracted_at as timestamp with time zone) as _extracted_at,
+              'hash' as _source_row_hash
+          from (
+              values
+                  ('1111111111', '2022', 'b-old', '2025-06-01 00:00:00+00', '20'),
+                  ('2222222222', '2022', 'b-old', '2025-06-01 00:00:00+00', '30'),
+                  ('1111111111', '2022', 'b-new', '2026-06-01 00:00:00+00', '25'),
+                  ('2222222222', '2021', 'b-2021', '2025-06-01 00:00:00+00', '40')
+          ) as v (prscrbr_npi, _cms_release_year, _batch_id, _extracted_at, tot_clms)
+    expect:
+      rows:
+        - {prescriber_npi: "1111111111", data_year: 2022, total_claims: 25}
+        - {prescriber_npi: "2222222222", data_year: 2021, total_claims: 40}

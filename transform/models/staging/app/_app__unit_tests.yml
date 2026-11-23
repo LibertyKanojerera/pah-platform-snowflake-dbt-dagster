@@ -1,0 +1,83 @@
+version: 2
+
+unit_tests:
+  - name: patients_latest_updated_at_wins_not_latest_landing
+    description: >
+      Patient 1 changed tier (2 to 3) and the newer version wins. Patient 2
+      landed twice unchanged and collapses to one row. Patient 3's later
+      landing carries an older version (a replay from an older snapshot);
+      the newer updated_at must win, which ordering by landing time would
+      get wrong.
+    model: stg_app__patients
+    given:
+      - input: source('landing', 'app_postgres_patients')
+        format: sql
+        rows: |
+          select
+              v.patient_id,
+              '1111111111' as prescriber_npi,
+              cast('2020-01-01' as date) as index_date,
+              'oral' as initial_route,
+              v.copay_tier,
+              '65-74' as age_band,
+              'F' as sex,
+              'MA' as prescriber_state,
+              cast('2025-12-01 00:00:00+00' as timestamp with time zone) as created_at,
+              cast(v.updated_at as timestamp with time zone) as updated_at,
+              'app_postgres_patients' as _source,
+              v._batch_id,
+              'landing/key' as _file_name,
+              cast(v._extracted_at as timestamp with time zone) as _ingested_at,
+              cast(v._extracted_at as timestamp with time zone) as _extracted_at,
+              'hash' as _source_row_hash
+          from (
+              values
+                  (1, 2, '2026-01-01 00:00:00+00', 'b1', '2026-01-02 00:00:00+00'),
+                  (1, 3, '2026-02-01 00:00:00+00', 'b2', '2026-02-02 00:00:00+00'),
+                  (2, 1, '2026-01-01 00:00:00+00', 'b1', '2026-01-02 00:00:00+00'),
+                  (2, 1, '2026-01-01 00:00:00+00', 'b2', '2026-02-02 00:00:00+00'),
+                  (3, 4, '2026-03-01 00:00:00+00', 'b1', '2026-03-02 00:00:00+00'),
+                  (3, 2, '2026-02-15 00:00:00+00', 'b2', '2026-03-05 00:00:00+00')
+          ) as v (patient_id, copay_tier, updated_at, _batch_id, _extracted_at)
+    expect:
+      rows:
+        - {patient_id: 1, copay_tier: 3}
+        - {patient_id: 2, copay_tier: 1}
+        - {patient_id: 3, copay_tier: 4}
+
+  - name: events_one_row_per_event_id
+    description: >
+      Event 10 landed in two batches (a re-read extraction boundary) and must
+      appear once. Events 11 and 12 landed once. The discontinuation keeps
+      its null days_supply.
+    model: stg_app__patient_events
+    given:
+      - input: source('landing', 'app_postgres_patient_events')
+        format: sql
+        rows: |
+          select
+              v.event_id,
+              1 as patient_id,
+              v.event_type,
+              cast(v.event_timestamp as timestamp with time zone) as event_timestamp,
+              'oral' as route,
+              v.days_supply,
+              cast(v.event_timestamp as timestamp with time zone) as created_at,
+              'app_postgres_patient_events' as _source,
+              v._batch_id,
+              'landing/key' as _file_name,
+              cast(v._extracted_at as timestamp with time zone) as _ingested_at,
+              cast(v._extracted_at as timestamp with time zone) as _extracted_at,
+              'hash' as _source_row_hash
+          from (
+              values
+                  (10, 'fill', 30, '2026-01-01 00:00:00+00', 'b1', '2026-01-03 00:00:00+00'),
+                  (10, 'fill', 30, '2026-01-01 00:00:00+00', 'b2', '2026-02-20 00:00:00+00'),
+                  (11, 'fill', 30, '2026-01-31 00:00:00+00', 'b2', '2026-02-20 00:00:00+00'),
+                  (12, 'discontinuation', null, '2026-02-15 00:00:00+00', 'b2', '2026-02-20 00:00:00+00')
+          ) as v (event_id, event_type, days_supply, event_timestamp, _batch_id, _extracted_at)
+    expect:
+      rows:
+        - {event_id: 10, event_type: fill, days_supply: 30}
+        - {event_id: 11, event_type: fill, days_supply: 30}
+        - {event_id: 12, event_type: discontinuation, days_supply: null}

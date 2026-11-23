@@ -1,0 +1,66 @@
+version: 2
+
+unit_tests:
+  - name: nppes_failure_never_displaces_a_successful_lookup
+    description: >
+      Four NPIs, each landed in two batches. 1000000001: a hit, then a
+      timeout; the hit stays. 1000000002: a hit, then a definitive miss; the
+      miss wins, because it is newer information (deactivation).
+      1000000003: only failures; the latest failure stays. 1000000004: two
+      hits with a specialty change; the latest hit wins.
+    model: stg_nppes__providers
+    given:
+      - input: source('landing', 'nppes')
+        format: sql
+        rows: |
+          select
+              v.npi,
+              v.nppes_found,
+              v.nppes_error,
+              'NPI-1' as enumeration_type,
+              'A' as status,
+              'MD' as credential,
+              '' as name_prefix,
+              'Jane' as first_name,
+              '' as middle_name,
+              'Doe' as last_name,
+              '' as organization_name,
+              'NO' as sole_proprietor,
+              '2005-05-23' as enumeration_date,
+              '2026-01-01' as last_updated,
+              '' as certification_date,
+              v.taxonomy_code,
+              'desc' as taxonomy_desc,
+              '' as taxonomy_license,
+              'MA' as taxonomy_state,
+              1 as taxonomy_count,
+              false as taxonomy_ambiguous,
+              '1 Main St' as location_address_1,
+              'Boston' as location_city,
+              'MA' as location_state,
+              '02115' as location_postal_code,
+              '021151234' as location_postal_code_full,
+              false as location_missing,
+              'nppes' as _source,
+              v._batch_id,
+              'landing/key' as _file_name,
+              cast(v._extracted_at as timestamp with time zone) as _ingested_at,
+              cast(v._extracted_at as timestamp with time zone) as _extracted_at,
+              'hash' as _source_row_hash
+          from (
+              values
+                  ('1000000001', true, '', '207RP1001X', 'b1', '2026-01-01 00:00:00+00'),
+                  ('1000000001', false, 'timeout', '', 'b2', '2026-02-01 00:00:00+00'),
+                  ('1000000002', true, '', '207RC0000X', 'b1', '2026-01-01 00:00:00+00'),
+                  ('1000000002', false, '', '', 'b2', '2026-02-01 00:00:00+00'),
+                  ('1000000003', false, 'timeout', '', 'b1', '2026-01-01 00:00:00+00'),
+                  ('1000000003', false, 'reset', '', 'b2', '2026-02-01 00:00:00+00'),
+                  ('1000000004', true, '', '207RC0000X', 'b1', '2026-01-01 00:00:00+00'),
+                  ('1000000004', true, '', '207RP1001X', 'b2', '2026-02-01 00:00:00+00')
+          ) as v (npi, nppes_found, nppes_error, taxonomy_code, _batch_id, _extracted_at)
+    expect:
+      rows:
+        - {npi: "1000000001", nppes_found: true, nppes_error: null, taxonomy_code: "207RP1001X"}
+        - {npi: "1000000002", nppes_found: false, nppes_error: null, taxonomy_code: null}
+        - {npi: "1000000003", nppes_found: false, nppes_error: "reset", taxonomy_code: null}
+        - {npi: "1000000004", nppes_found: true, nppes_error: null, taxonomy_code: "207RP1001X"}
