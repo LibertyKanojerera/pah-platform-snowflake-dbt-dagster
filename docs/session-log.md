@@ -862,3 +862,51 @@ Next: plan S26, staging part two. stg_app__patients (latest updated_at per
       dbt unit tests for all four rules with crafted restatements, with up
       to 15 minutes to confirm a source with external_location can be
       mocked. Then ADR-021.
+
+## S26 - 2026-11-23
+Did: plan S26, staging part two. stg_app__patients and
+     stg_app__patient_events under models/staging/app/; dbt unit tests for
+     all four current-state rules; ADR-021. 23 data tests on the new models
+     (84 in total) and 4 unit tests. Commit 60c0cb9, rebased over an online
+     edit. Staging is complete for all four sources.
+Recon: 5,000 patients, index dates 2019-01-01 to 2023-06-30, none updated
+     since load. Routes 3,459 oral, 1,385 inhaled, 156 parenteral; copay,
+     age and sex match the S17 weights. Every prescriber is in CMS; 16
+     patients' prescribers are NPPES misses. 77,192 events: 73,465 fills at
+     exactly 30 days and 3,727 discontinuations with null days_supply. No
+     orphans; no event before its index date in UTC.
+Finding: 1,273 of 5,000 patients censored (25.5%), below the 30 to 45% the
+     S17 check aimed for. By route: oral 26.7%, inhaled 21.5%, parenteral
+     34.0%, ordered as the designed hazards predict. More events, not
+     fewer, so no threat to the Cox fit; noted so S46 is not surprised.
+Finding: DuckDB's session time zone is the machine's (America/New_York). A
+     plain date cast put 5,003 events before their index date: all 5,000
+     first fills (midnight UTC on the index date) plus 3 discontinuations
+     on the index date itself, so 3 patients have zero follow-up. In UTC:
+     0 before index.
+Decided: unit tests use format: sql fixtures. The dict format needs dbt to
+     read each input's column types from the warehouse, and the landing
+     sources are S3 paths, not catalog tables. SQL fixtures carry their own
+     types and run unchanged on Snowflake. Unit tests read no S3, so they
+     are the first dbt tests that can run in CI without AWS credentials
+     (S50).
+Mutations: one sed per model breaking each rule; 4 of 4 unit tests failed
+     with the predicted diffs (CMS 25 to 20 plus the dropped 2022 row;
+     NPPES hit replaced by the timeout; patients 3 to 2 and 4 to 2; event
+     10 twice). Restored, 4 pass. The events case confirms dbt's comparison
+     catches duplicated rows.
+ADR-021: staging resolves the append-only landing to current state, one
+     rule per source. CMS on Snowflake loads by replacing a release year,
+     not MERGE; the other MERGEs carry their rule. Closes the S25 proof
+     gap and records the brief change.
+Accepted: Postgres hard deletes are not captured (no deleted flag).
+Open, S27: pin DuckDB's TimeZone to UTC in profiles.yml, so dates do not
+     depend on the machine. Phase 4: the Snowflake service user needs
+     TIMEZONE = 'UTC' for the same reason (Snowflake's default is
+     America/Los_Angeles).
+Open, S34 and S46: the 3 zero-follow-up patients (check how lifelines
+     treats a duration of 0). The 16 patients whose prescriber NPPES did
+     not find: mart_survival_cohort must code their specialty the way
+     generate.py did, or coefficient recovery at S46 is biased.
+Next: plan S27. Block 0: the UTC decision. Then the luhn_check() macro and
+      its test with known valid and invalid NPIs.
