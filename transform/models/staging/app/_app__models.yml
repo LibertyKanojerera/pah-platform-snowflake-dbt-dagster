@@ -18,6 +18,9 @@ models:
               arguments:
                 to: ref('stg_cms__part_d_claims')
                 field: prescriber_npi
+          - valid_npi:
+              config:
+                severity: warn
       - name: index_date
         description: Therapy start; survival time is measured from here.
         data_tests: [not_null]

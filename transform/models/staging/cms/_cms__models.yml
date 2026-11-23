@@ -29,8 +29,14 @@ models:
               = (ge65_total_beneficiaries is not null)
     columns:
       - name: prescriber_npi
-        description: Prescriber NPI as CMS reports it. Luhn validation is plan S27.
-        data_tests: [not_null]
+        description: >
+          Prescriber NPI as CMS reports it. valid_npi warns on a failed check
+          digit; plan S29 flags such rows rather than dropping them.
+        data_tests:
+          - not_null
+          - valid_npi:
+              config:
+                severity: warn
       - name: brand_name
         description: CMS Brnd_Name exactly as stored; joins drug_vocabulary.brnd_name.
         data_tests: [not_null]

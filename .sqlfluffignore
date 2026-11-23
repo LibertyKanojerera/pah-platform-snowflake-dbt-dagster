@@ -1,0 +1,6 @@
+.venv/
+infra/
+transform/dbt_packages/
+transform/target/
+transform/logs/
+transform/macros/

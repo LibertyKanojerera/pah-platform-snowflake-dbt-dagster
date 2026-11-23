@@ -14,7 +14,12 @@ models:
     columns:
       - name: npi
         description: The NPI looked up; one row each.
-        data_tests: [not_null, unique]
+        data_tests:
+          - not_null
+          - unique
+          - valid_npi:
+              config:
+                severity: warn
       - name: nppes_found
         description: >
           False for a miss (NPPES returned nothing, typically a deactivated

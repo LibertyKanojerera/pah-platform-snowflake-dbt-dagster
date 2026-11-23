@@ -10,6 +10,9 @@ pah:
       path: "{{ env_var('DBT_DUCKDB_PATH', 'data/warehouse.duckdb') }}"
       schema: dev
       threads: 4
+      # UTC, so a date cast never depends on the machine's time zone
+      settings:
+        TimeZone: UTC
       extensions: [httpfs, aws]
       secrets:
         - type: s3
