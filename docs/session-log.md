@@ -910,3 +910,45 @@ Open, S34 and S46: the 3 zero-follow-up patients (check how lifelines
      generate.py did, or coefficient recovery at S46 is biased.
 Next: plan S27. Block 0: the UTC decision. Then the luhn_check() macro and
       its test with known valid and invalid NPIs.
+
+## S27 - 2026-11-23
+Did: plan S27. DuckDB pinned to UTC; luhn_check() macro; known-answer
+     singular test; valid_npi generic test (severity warn) on the three NPI
+     columns; .sqlfluffignore. 88 data tests, 4 unit tests. Commit
+     6c9373a.
+UTC: profiles.yml settings, TimeZone UTC. The S26 plain-cast query went
+     from 5,003 events before their index date to 0. Phase 4: the Snowflake
+     service user needs TIMEZONE = 'UTC' (Snowflake's default is
+     America/Los_Angeles).
+Decided: luhn_check is portable as written (substr, try_cast, translate,
+     %), so no adapter dispatch. Dispatch waits for S33, where UTC date
+     conversion genuinely diverges (timezone() against convert_timezone()).
+     try_cast because engines may evaluate the arithmetic before the shape
+     checks; the result is never null and never an error.
+Decided: validation is layered. valid_npi warns in staging, so an invalid
+     NPI is reported on every build without stopping it; S29's
+     int_claims__npi_validated flags the row rather than dropping it.
+Tested: dbt unit tests target models only, so the macro is tested by a
+     singular test over 14 known NPIs: CMS's worked example 1234567893,
+     hand-computed check digits including 0, and nine ways to be wrong. It
+     reads no data and needs no AWS credentials.
+Verified: 0 invalid NPIs among 2,239 CMS prescribers, 2,239 NPPES lookups
+     and 1,089 patient prescribers.
+Mutations: "subtract 9" changed to "subtract 8". The known-answer test
+     failed with exactly the 4 predicted rows: three valid NPIs rejected,
+     and 1234567890 accepted. valid_npi warned on 9,848 CMS rows, 2,028
+     NPPES NPIs and 4,512 patients, about 90.5% each rather than the 94%
+     predicted: NPIs are issued in number ranges, so their digits are not
+     evenly spread.
+Gotcha: the sqlfluff AL05 autofix removed an "unused" VALUES alias together
+     with its column list, renaming the columns col0 to col2; the test
+     errored until the columns were read through the alias. Also, a SQL
+     comment beginning with the word sqlfluff is parsed as an inline config
+     directive.
+Gotcha: a bare sqlfluff fix walks the whole repo, .venv included.
+     .sqlfluffignore now limits bare runs to transform/models and
+     transform/tests, the same scope as the pre-commit hook.
+Queued: credential_process profile, for a housekeeping slot.
+Next: plan S28, route resolution: int_drugs__route_resolved, and whether
+      ADR-002's longest-prefix matcher survives now that route lives in the
+      vocabulary at pair grain and pair coverage is tested both ways.
