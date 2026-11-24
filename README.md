@@ -41,7 +41,7 @@ build and this one stay directly comparable.
 | Source | Type | Why it is here |
 |---|---|---|
 | CMS Medicare Part D Prescribers by Provider and Drug | Paginated public REST API | Real pagination, real idempotency problem |
-| NPPES NPI Registry | Rate-limited enrichment API | Changing provider attributes justify an SCD2 snapshot |
+| NPPES NPI Registry | Rate-limited enrichment API | Changing provider attributes justify an SCD2 provider history (ADR-023) |
 | Synthetic patient events | Local Postgres | Incremental extraction on a high-water mark |
 
 Filtered to the four PAH molecules: treprostinil, selexipag, iloprost, epoprostenol.

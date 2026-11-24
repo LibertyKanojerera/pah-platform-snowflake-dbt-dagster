@@ -4,6 +4,7 @@ Status: Accepted, plan S26
 Amends: the brief's "MERGE on natural key" ingestion rule, for CMS
 Related: ADR-010 (prove a test can fail), ADR-019 (provenance contract v2),
 ADR-020 (dbt reads the landing zone)
+Amended by: ADR-023 (Phase 4 keeps every NPPES batch, not the NPPES MERGE below)
 
 ## Context
 

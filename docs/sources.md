@@ -407,9 +407,11 @@ with brief practice.
 **Consequence: the dimension is not a superset of the fact table's keys, and
 cannot be.** Historical claims reference providers who have since left the
 registry. This is why NPPES enrichment is a left join with nullable columns
-(ADR-017) and why NPPES was rejected as the SCD2 source (plan S14 decision):
+(ADR-017). It is also why plan S14 rejected NPPES as the SCD2 source:
 snapshotting a registry that silently drops members would record deletions it
-has no way to explain.
+has no way to explain. ADR-023 reverses that decision: the provider history
+records a disappearance as a version with nppes_found false, dated when the
+NPI was first seen missing, and claims no explanation for it.
 
 Plan S29's specialty grouping must tolerate a null taxonomy rather than
 assuming every prescriber resolves.
@@ -424,7 +426,7 @@ count is meaningful.
 
 Specialty comes from the NUCC taxonomy code of each provider's primary taxonomy
 in NPPES, not from CMS's `Prscrbr_Type`. The code set is standard, it is what
-the SCD2 provider snapshot tracks, and the code (not the description, which
+the SCD2 provider history tracks, and the code (not the description, which
 NUCC rewords) is the key. `transform/seeds/specialty_category_map.csv` maps all
 43 codes present to seven categories; there is no default, and a new code fails
 `assert_every_found_provider_taxonomy_is_mapped`. Critical care and sleep

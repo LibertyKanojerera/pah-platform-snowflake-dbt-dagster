@@ -1025,3 +1025,48 @@ Next: plan S30, snap_provider, the SCD2 snapshot on specialty and
       location: check strategy, grain, source model, and what "provider as
       at claim date" can mean when NPPES history starts at the first lookup
       in 2026, years after the 2013 to 2024 claims.
+
+## S30 - 2026-11-24
+Did: plan S30, the provider history. int_providers__history derives SCD2
+     from every successful NPPES lookup in the landing zone instead of a
+     dbt snapshot. Tracks nppes_found, taxonomy_code, location_state and
+     location_postal_code; a version starts wherever one differs from the
+     previous observation; failed lookups are ignored, cache re-landings
+     collapse, a miss is a version. Materialised as a table. Two singular
+     tests (one current version per NPI; the current version matches
+     staging), mutually_exclusive_ranges with no gaps, and the first
+     intermediate unit test (five NPIs, four batches). 110 data tests, 5
+     unit tests. Commit 9acf3b8.
+Decided: ADR-023. Reverses the S14 decision to build the SCD2 from CMS
+     attributes, which the S30 plan missed and the S30 close caught: S29
+     made the NPPES taxonomy the specialty, and CMS's per-year values
+     already arrive on the claim row. Amends the spec's snap_provider and
+     ADR-021's NPPES MERGE: Phase 4 keeps every NPPES batch. Snapshot
+     config and transform/snapshots/ removed.
+Recon: one NPPES batch, 2,239 lookups fetched 2026-11-08 to 2026-11-11, no
+     failures. The history starts 8 November; I predicted about 6
+     November. Every fact row predates it (claims 2013 to 2024, patient
+     events 2019 to 2023), so every one joins to the earliest version,
+     flagged. How wrong that can be: of 2,220 found prescribers, 87 (3.9%)
+     have a different state in their last CMS year than in NPPES today; of
+     1,544 multi-year prescribers, 103 (6.7%) changed state and 236 (15.3%)
+     changed CMS prescriber type within CMS's own years (an upper bound;
+     the label is noisy).
+Lint: sqlfluff's duckdb dialect read the FROM of `is distinct from` in a
+     select-list case as the start of the FROM clause, so it parsed the
+     rest as unparsable and reported with_previous as unused. DuckDB ran
+     the model fine. Parenthesising each comparison fixes the parse; the
+     same comparison in a WHERE clause parses as written.
+Mutations: counting failed lookups failed the unit test (1000000002 split
+     into three versions). Emptying the history failed only the staging
+     cross-check, 2,239 rows; the other six data tests pass on an empty
+     table. Ignoring taxonomy changes did not run the first time: the
+     parentheses changed the line sed was looking for, sed matched nothing
+     and exited 0, and the unit test failed on the other mutation, which
+     hid the miss. Rerun alone behind a diff check, it collapsed
+     1000000001 to one version of four observations, as predicted.
+Lesson: one mutation per test run, and `git diff --stat` before the tests.
+     A sed that matches nothing still succeeds.
+Next: plan S31, dim_provider (versions from int_providers__history, a
+      backfill flag for facts before a provider's first observation,
+      specialty category per version), dim_drug, dim_date.
