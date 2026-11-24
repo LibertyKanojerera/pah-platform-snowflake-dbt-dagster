@@ -22,3 +22,45 @@ models:
       - name: product_type
         description: drug, or accessory (left out where claims are counted, plan S34).
         data_tests: [not_null]
+
+  - name: int_claims__npi_validated
+    description: >
+      Every staged CMS claim row with is_npi_valid, the CMS check-digit
+      result for the prescriber NPI (macros/luhn_check.sql). Invalid NPIs
+      are flagged, never dropped: valid_npi warns on them in staging, and
+      the aggregate decides what to count.
+    data_tests:
+      - dbt_utils.equal_rowcount:
+          arguments:
+            compare_model: ref('stg_cms__part_d_claims')
+    columns:
+      - name: is_npi_valid
+        data_tests: [not_null]
+
+  - name: int_providers__specialty_grouped
+    description: >
+      One row per prescriber in the CMS claims, with the NPPES lookup
+      outcome, the primary taxonomy, research question one's specialty
+      category and research question two's prescriber covariate.
+      Prescribers NPPES did not find are 'unknown', an explicit state; a
+      found prescriber with an unmapped taxonomy stays null and fails
+      not_null, so there is still no default category.
+    columns:
+      - name: npi
+        data_tests: [not_null, unique]
+      - name: nppes_found
+        description: Null would mean a CMS prescriber was never looked up; not_null catches that.
+        data_tests: [not_null]
+      - name: specialty_category
+        description: Research question one's grouping, plus unknown for prescribers NPPES did not find.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [pulmonology, cardiology, advanced_practice, primary_care, pediatrics, unspecified, other, unknown]
+      - name: is_pulmonary_disease
+        description: >
+          Research question two's prescriber covariate: primary taxonomy
+          207RP1001X. Narrower than the pulmonology category on purpose; it
+          matches generate.py's rule (assert_pulmonary_disease_flag_matches_generator_rule).
+        data_tests: [not_null]
