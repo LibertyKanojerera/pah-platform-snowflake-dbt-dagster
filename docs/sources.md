@@ -486,3 +486,36 @@ Tyvaso Refill Kit is nebuliser supplies and is excluded from claim counts.
 Counted as an inhaled drug, as the Databricks mapping did, it would be
 nearly the whole inhaled series from 2016 to 2021 (2017: 65 kit claims
 against 12 drug claims).
+
+### Prescriber covariate (research question two)
+
+Research question two's prescriber covariate is is_pulmonary_disease in
+int_providers__specialty_grouped: primary taxonomy 207RP1001X (Internal
+Medicine, Pulmonary Disease). It is narrower than research question one's
+pulmonology category, which also holds critical care (207RC0200X, 154
+providers), sleep medicine (207RS0012X, 10) and anesthesiology critical
+care (207LC0200X, 1).
+
+The narrow definition is deliberate. infra/postgres/generate.py set each
+prescriber's pulmonology flag, and with it the cohort's ground-truth
+hazard, from an NPPES taxonomy description containing "pulmonary", which
+in this data selects exactly 207RP1001X. Coding the covariate from the
+pulmonology category instead would mark 88 prescribers, and their 420
+patients (8.4% of the cohort), as pulmonology when the generator did not,
+pulling the coefficient S46 must recover toward zero. The model keys on the
+code, because NUCC rewords descriptions, and
+assert_pulmonary_disease_flag_matches_generator_rule fails if the code and
+the generator's rule ever disagree. Prescribers NPPES did not find are
+false under both.
+
+| Pulmonology for RQ2 | Pulmonology for RQ1 | Prescribers | Patients |
+|---|---|---|---|
+| no | no | 486 | 2,193 |
+| no | yes | 88 | 420 |
+| yes | yes | 515 | 2,387 |
+
+The cohort's 1,089 prescribers all come from the 2023 release, which has
+1,100. Drawing 5,000 patients from a pool of 1,100 gives about 1,088
+distinct prescribers, so the generator ran when only 2023 had landed, and
+staging now reads the same cached NPPES lookups it read. The covariate is
+therefore recomputed from the generator's own inputs.

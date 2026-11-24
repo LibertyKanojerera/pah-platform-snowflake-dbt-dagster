@@ -990,3 +990,38 @@ Finding: counting Tyvaso Refill Kit as inhaled, as the Databricks mapping
      (2017: 65 kit claims against 12 drug claims).
 Next: plan S29, int_claims__npi_validated (carrying the Luhn result as a
       flag) and int_providers__specialty_grouped.
+
+## S29 - 2026-11-24
+Did: plan S29, the remaining intermediates. int_claims__npi_validated:
+     every staged claim row plus is_npi_valid (luhn_check), flagged and
+     never dropped, held to staging by dbt_utils.equal_rowcount.
+     int_providers__specialty_grouped: one row per CMS prescriber, driven
+     from the claims, with nppes_found, taxonomy, specialty_category (an
+     explicit 'unknown' for NPPES misses) and is_pulmonary_disease. 103
+     data tests, 4 unit tests. Commit b2f6720. All three intermediates in
+     the spec are built.
+Finding: "pulmonology" meant two things. RQ1's category holds 1,208
+     providers (207RP1001X 1,043, critical care 154, sleep 10, anesthesiology
+     critical care 1). generate.py's ground truth used a description
+     containing "pulmonary", which is 207RP1001X alone. Using the category
+     as RQ2's covariate would have miscoded 88 prescribers and 420 patients
+     (8.4%) and biased the S46 coefficient toward zero. RQ2 uses
+     is_pulmonary_disease (code 207RP1001X), and a singular test holds it to
+     the generator's rule. Closes the S26 open item: NPPES misses are false
+     under both rules.
+Finding: the cohort's 1,089 prescribers all come from the 2023 release
+     (1,100); 5,000 draws from 1,100 give about 1,088 distinct. The
+     generator ran when only 2023 had landed, on the same cached NPPES
+     lookups staging reads now. Recorded in docs/sources.md.
+Verified: the specialty totals reproduce S24's reconciliation exactly,
+     now with unknown as its own row (19 providers, 2,593 claims); 398,062
+     claims in total. All 10,871 claim rows have a valid NPI.
+Mutations: removing 207RP1001X from the seed and moving the covariate to
+     207RC0200X failed exactly 3 tests: not_null on specialty_category
+     (1,043), the S24 coverage test (1) and the generator-rule test (1,197,
+     which is 1,043 plus 154). Dropping 2013 from the claims model failed
+     equal_rowcount with 25. All as predicted.
+Next: plan S30, snap_provider, the SCD2 snapshot on specialty and
+      location: check strategy, grain, source model, and what "provider as
+      at claim date" can mean when NPPES history starts at the first lookup
+      in 2026, years after the 2013 to 2024 claims.
