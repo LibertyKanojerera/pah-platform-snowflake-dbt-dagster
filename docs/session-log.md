@@ -952,3 +952,41 @@ Queued: credential_process profile, for a housekeeping slot.
 Next: plan S28, route resolution: int_drugs__route_resolved, and whether
       ADR-002's longest-prefix matcher survives now that route lives in the
       vocabulary at pair grain and pair coverage is tested both ways.
+
+## S28 - 2026-11-24
+Did: plan S28, route resolution. int_drugs__route_resolved (ephemeral): one
+     row per (generic, brand) pair with molecule, route and product type
+     from an exact left join to drug_vocabulary. Tests: unique pair,
+     not_null on the three attributes, route resolution keeps every claim
+     row, drugs resolve to their own vocabulary row. ADR-022. 94 data
+     tests, 4 unit tests. Commits 12a775e and d0090ec.
+Decided: ADR-002's longest-prefix matcher is retired in the port (ADR-022,
+     amends the spec). The vocabulary holds the exact stored pairs and
+     ingest refuses unknown ones, so a fallback could never fire; if it
+     did, it would guess.
+Recon: 12 pairs cover all 10,871 rows and 398,062 claims. Veletri appears
+     under two generic strings (Arginine to 2019, plain from 2020); generic
+     injections carry the brand names Treprostinil and Epoprostenol Sodium;
+     Treprostinil/Neb Accessories is Tyvaso (drug, 2013 to 2015) and Tyvaso
+     Refill Kit (accessory, 2016 to 2024). 2024 has exactly 450 Orenitram Er
+     rows, ADR-002's figure, but the Databricks build's 1,603 rows match no
+     single year here, so its filter differed. Open for the write-up.
+Mutation: join on the brand's first word, ADR-002's mistake mirrored.
+     Dropped 4,985 rows (Orenitram Er 3,777, Tyvaso Dpi 1,206, Epoprostenol
+     Sodium 2): not_null failed on 3 pairs, row count 5,886 of 10,871. I
+     predicted 4 pairs and 5,064 rows; the gap is the finding. Tyvaso
+     Refill Kit matched the Tyvaso drug row and became an inhaled drug, 79
+     rows and 1,028 claims, with every count still adding up. The own-row
+     test was added for that case; under the same mutation it fails with 4
+     rows, the Refill Kit among them.
+Finding: Part D's route mix follows benefit design. Nebulised Tyvaso is in
+     Part D only 2013 to 2015, inhaled is near zero 2016 to 2021, and Tyvaso
+     DPI brings it to 33% of 2024 drug claims. Oral growth follows Orenitram
+     (2014) and Uptravi (2016). Recorded in docs/sources.md (Route), with the
+     PH Association's Part B and Part D coverage list. Closes the S25
+     hypothesis.
+Finding: counting Tyvaso Refill Kit as inhaled, as the Databricks mapping
+     did, would make it nearly the whole inhaled series in 2016 to 2021
+     (2017: 65 kit claims against 12 drug claims).
+Next: plan S29, int_claims__npi_validated (carrying the Luhn result as a
+      flag) and int_providers__specialty_grouped.
