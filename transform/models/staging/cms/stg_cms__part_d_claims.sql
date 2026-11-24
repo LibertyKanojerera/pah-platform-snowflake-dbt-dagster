@@ -1,6 +1,7 @@
 -- CMS Part D prescribing, one row per prescriber, brand, generic and data
--- year, renamed and typed. No rows are filtered: accessories leave in the
--- intermediate layer, where the vocabulary join supplies product_type.
+-- year, renamed and typed. No rows are filtered: accessories are flagged
+-- by product_type in the intermediate layer and left out where claims are
+-- counted (ADR-022).
 --
 -- The landing zone is append-only. A CMS release is a full snapshot of its
 -- year, so the latest landed batch of each year wins whole; taking the

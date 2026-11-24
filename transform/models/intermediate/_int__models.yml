@@ -1,0 +1,24 @@
+version: 2
+
+models:
+  - name: int_drugs__route_resolved
+    description: >
+      One row per drug, meaning each (generic, brand) pair CMS reports, with
+      the molecule, route and product type drug_vocabulary assigns it, plus
+      how often and over which years the pair appears in claims. Resolution
+      is an exact join on both stored strings (ADR-022); a pair the
+      vocabulary lacks becomes a null route and fails not_null rather than
+      dropping claims.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [generic_name, brand_name]
+    columns:
+      - name: molecule
+        data_tests: [not_null]
+      - name: route
+        description: Route of administration, the second axis of research question one.
+        data_tests: [not_null]
+      - name: product_type
+        description: drug, or accessory (left out where claims are counted, plan S34).
+        data_tests: [not_null]

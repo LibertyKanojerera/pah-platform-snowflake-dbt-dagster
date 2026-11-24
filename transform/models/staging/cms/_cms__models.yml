@@ -6,9 +6,10 @@ models:
       CMS Medicare Part D prescribing for the four PAH molecules, one row per
       prescriber, brand, generic and data year, from the latest landed batch
       of each release (a release is a full snapshot of its year). Renamed and
-      typed only; no rows are filtered. Accessory rows are still present and
-      leave in the intermediate layer, where the vocabulary join supplies
-      product_type (plan S28). Blank counts are CMS suppression and become
+      typed only; no rows are filtered. Accessory rows are still present:
+      the intermediate layer flags them by product_type (plan S28) and they
+      are left out where claims are counted (ADR-022). Blank counts are CMS
+      suppression and become
       nulls: a blank Tot_Benes means 1 to 10 beneficiaries.
     data_tests:
       - dbt_utils.unique_combination_of_columns:
