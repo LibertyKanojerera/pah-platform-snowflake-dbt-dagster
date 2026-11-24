@@ -448,3 +448,41 @@ prescribing. The totals reconcile: NPPES-matched claims are 395,469, CMS's
 398,062, and the 2,593 difference belongs to the 19 NPIs NPPES no longer
 returns (deactivated; see above). CMS totals also mix years in which a
 provider's Prscrbr_Type can change.
+
+### Route
+
+Route comes from drug_vocabulary by an exact (generic, brand) join
+(ADR-022). Part D claims by route and data year; accessories are shown
+apart and excluded from claim counts:
+
+| Year | Oral | Inhaled | Parenteral | Accessory |
+|---|---|---|---|---|
+| 2013 | 0 | 211 | 133 | 0 |
+| 2014 | 1,994 | 239 | 87 | 0 |
+| 2015 | 9,227 | 86 | 113 | 0 |
+| 2016 | 16,573 | 0 | 201 | 125 |
+| 2017 | 24,203 | 12 | 197 | 65 |
+| 2018 | 28,649 | 12 | 219 | 59 |
+| 2019 | 33,256 | 13 | 364 | 86 |
+| 2020 | 43,496 | 0 | 308 | 125 |
+| 2021 | 46,016 | 0 | 554 | 130 |
+| 2022 | 41,645 | 1,968 | 716 | 157 |
+| 2023 | 45,311 | 16,088 | 1,221 | 57 |
+| 2024 | 55,177 | 27,463 | 1,282 | 224 |
+
+Part D's route mix follows what Part D covers. The Pulmonary Hypertension
+Association lists Orenitram and Veletri among the drugs Part D covers, and
+Flolan, Ventavis, Remodulin and Tyvaso as generally covered under Part B,
+because they are given with durable medical equipment
+(https://phassociation.org/patients/insurance-and-treatment-access/medicare/medicare-part-d/).
+The data agree. Nebulised Tyvaso appears in Part D only from 2013 to 2015;
+inhaled claims are near zero from 2016 to 2021 (Ventavis is last seen in
+2019); inhaled returns with Tyvaso DPI, a dry-powder inhaler, from 2022,
+reaching 33% of 2024 drug claims. Oral growth follows Orenitram (2014) and
+Uptravi (2016). Research question one's route trend in Part D is therefore
+partly a benefit-design trend, and the write-up must say so.
+
+Tyvaso Refill Kit is nebuliser supplies and is excluded from claim counts.
+Counted as an inhaled drug, as the Databricks mapping did, it would be
+nearly the whole inhaled series from 2016 to 2021 (2017: 65 kit claims
+against 12 drug claims).
