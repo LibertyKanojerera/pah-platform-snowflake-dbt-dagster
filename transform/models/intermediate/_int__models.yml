@@ -64,3 +64,30 @@ models:
           207RP1001X. Narrower than the pulmonology category on purpose; it
           matches generate.py's rule (assert_pulmonary_disease_flag_matches_generator_rule).
         data_tests: [not_null]
+
+  - name: int_providers__history
+    description: >
+      Provider history (SCD2), one row per version of the tracked
+      attributes: nppes_found, taxonomy_code, location_state and
+      location_postal_code. Derived from every successful NPPES lookup in
+      the landing zone, not captured by a dbt snapshot (ADR-023).
+      valid_from is when a version was first observed; valid_to is the next
+      version's valid_from, null for the current version. History starts at
+      the first lookup (November 2026), so every claim year predates it.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [npi, version_number]
+      - dbt_utils.mutually_exclusive_ranges:
+          arguments:
+            lower_bound_column: valid_from
+            upper_bound_column: "coalesce(valid_to, cast('9999-12-31 00:00:00+00' as timestamp with time zone))"
+            partition_by: npi
+            gaps: not_allowed
+    columns:
+      - name: npi
+        data_tests: [not_null]
+      - name: valid_from
+        data_tests: [not_null]
+      - name: nppes_found
+        data_tests: [not_null]

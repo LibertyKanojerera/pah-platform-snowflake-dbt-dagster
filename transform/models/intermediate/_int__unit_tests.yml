@@ -1,0 +1,56 @@
+version: 2
+
+unit_tests:
+  - name: provider_history_versions_from_every_batch
+    description: >
+      Five NPIs across four batches. 1000000001 changes taxonomy and changes
+      back: three versions, the first observed twice. 1000000002 has a
+      failed lookup between two identical hits: one version, the failure
+      ignored. 1000000003 is found, then missed (deactivated): two versions.
+      1000000004 is one cached lookup landed twice: one version, one
+      observation. 1000000005 moves state, then changes only its city, which
+      is not tracked: two versions.
+    model: int_providers__history
+    given:
+      - input: source('landing', 'nppes')
+        format: sql
+        rows: |
+          select
+              v.npi,
+              v.nppes_found,
+              v.nppes_error,
+              v.taxonomy_code,
+              v.location_state,
+              v.location_postal_code,
+              v.location_city,
+              v._batch_id,
+              cast(v._extracted_at as timestamp with time zone) as _extracted_at,
+              cast(v._ingested_at as timestamp with time zone) as _ingested_at
+          from (
+              values
+                  ('1000000001', true, '', '207RP1001X', 'MA', '02115', 'Boston', 'b1', '2026-01-01 00:00:00+00', '2026-01-01 00:00:00+00'),
+                  ('1000000001', true, '', '207RP1001X', 'MA', '02115', 'Boston', 'b2', '2026-02-01 00:00:00+00', '2026-02-01 00:00:00+00'),
+                  ('1000000001', true, '', '207RC0200X', 'MA', '02115', 'Boston', 'b3', '2026-03-01 00:00:00+00', '2026-03-01 00:00:00+00'),
+                  ('1000000001', true, '', '207RP1001X', 'MA', '02115', 'Boston', 'b4', '2026-04-01 00:00:00+00', '2026-04-01 00:00:00+00'),
+                  ('1000000002', true, '', '207RP1001X', 'MA', '02115', 'Boston', 'b1', '2026-01-01 00:00:00+00', '2026-01-01 00:00:00+00'),
+                  ('1000000002', false, 'timeout', '', '', '', '', 'b2', '2026-02-01 00:00:00+00', '2026-02-01 00:00:00+00'),
+                  ('1000000002', true, '', '207RP1001X', 'MA', '02115', 'Boston', 'b3', '2026-03-01 00:00:00+00', '2026-03-01 00:00:00+00'),
+                  ('1000000003', true, '', '207RC0000X', 'NY', '10001', 'New York', 'b1', '2026-01-01 00:00:00+00', '2026-01-01 00:00:00+00'),
+                  ('1000000003', false, '', '', '', '', '', 'b2', '2026-02-01 00:00:00+00', '2026-02-01 00:00:00+00'),
+                  ('1000000004', true, '', '207RP1001X', 'MA', '02115', 'Boston', 'b1', '2026-01-01 00:00:00+00', '2026-01-01 00:00:00+00'),
+                  ('1000000004', true, '', '207RP1001X', 'MA', '02115', 'Boston', 'b2', '2026-01-01 00:00:00+00', '2026-02-01 00:00:00+00'),
+                  ('1000000005', true, '', '207RP1001X', 'MA', '02115', 'Boston', 'b1', '2026-01-01 00:00:00+00', '2026-01-01 00:00:00+00'),
+                  ('1000000005', true, '', '207RP1001X', 'NY', '10001', 'New York', 'b2', '2026-02-01 00:00:00+00', '2026-02-01 00:00:00+00'),
+                  ('1000000005', true, '', '207RP1001X', 'NY', '10001', 'Brooklyn', 'b3', '2026-03-01 00:00:00+00', '2026-03-01 00:00:00+00')
+          ) as v (npi, nppes_found, nppes_error, taxonomy_code, location_state, location_postal_code, location_city, _batch_id, _extracted_at, _ingested_at)
+    expect:
+      rows:
+        - {npi: "1000000001", version_number: 1, nppes_found: true, taxonomy_code: "207RP1001X", location_state: "MA", valid_from: "2026-01-01 00:00:00+00", valid_to: "2026-03-01 00:00:00+00", observations: 2}
+        - {npi: "1000000001", version_number: 2, nppes_found: true, taxonomy_code: "207RC0200X", location_state: "MA", valid_from: "2026-03-01 00:00:00+00", valid_to: "2026-04-01 00:00:00+00", observations: 1}
+        - {npi: "1000000001", version_number: 3, nppes_found: true, taxonomy_code: "207RP1001X", location_state: "MA", valid_from: "2026-04-01 00:00:00+00", valid_to: null, observations: 1}
+        - {npi: "1000000002", version_number: 1, nppes_found: true, taxonomy_code: "207RP1001X", location_state: "MA", valid_from: "2026-01-01 00:00:00+00", valid_to: null, observations: 2}
+        - {npi: "1000000003", version_number: 1, nppes_found: true, taxonomy_code: "207RC0000X", location_state: "NY", valid_from: "2026-01-01 00:00:00+00", valid_to: "2026-02-01 00:00:00+00", observations: 1}
+        - {npi: "1000000003", version_number: 2, nppes_found: false, taxonomy_code: null, location_state: null, valid_from: "2026-02-01 00:00:00+00", valid_to: null, observations: 1}
+        - {npi: "1000000004", version_number: 1, nppes_found: true, taxonomy_code: "207RP1001X", location_state: "MA", valid_from: "2026-01-01 00:00:00+00", valid_to: null, observations: 1}
+        - {npi: "1000000005", version_number: 1, nppes_found: true, taxonomy_code: "207RP1001X", location_state: "MA", valid_from: "2026-01-01 00:00:00+00", valid_to: "2026-02-01 00:00:00+00", observations: 1}
+        - {npi: "1000000005", version_number: 2, nppes_found: true, taxonomy_code: "207RP1001X", location_state: "NY", valid_from: "2026-02-01 00:00:00+00", valid_to: null, observations: 2}
