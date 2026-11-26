@@ -1070,3 +1070,55 @@ Lesson: one mutation per test run, and `git diff --stat` before the tests.
 Next: plan S31, dim_provider (versions from int_providers__history, a
       backfill flag for facts before a provider's first observation,
       specialty category per version), dim_drug, dim_date.
+
+## S31 - 2026-11-26
+Did: plan S31, the dimensions. dim_provider: one row per version of
+     int_providers__history, with specialty_category and
+     is_pulmonary_disease resolved per version, and two ranges: observed
+     (valid_from, valid_to) and effective (what facts join on), where the
+     first version reaches back to 1900 and the current one forward to
+     9999. dim_drug: one row per (generic, brand) pair, 12 rows. dim_date:
+     one row per day, 2013 to 2026, 5,113 rows. Surrogate keys from
+     dbt_utils. Three singular tests and a unit test (two NPIs, five
+     versions). 133 data tests, 6 unit tests. Commit 6e8566f.
+Decided: the backfill flag belongs to the facts. The dimension carries
+     both ranges, and a fact dated before its version's valid_from has
+     joined a backfilled version (S32, S33). This implements ADR-023's
+     "flagged as backfilled"; it does not change it.
+Design calls: the specialty rule now lives in dim_provider (per version)
+     and int_providers__specialty_grouped (current lookup);
+     assert_dim_provider_current_matches_specialty_grouped holds the two to
+     one answer and checks that every CMS prescriber has a current version.
+     Whether S34's aggregate reads dim_provider, retiring the intermediate,
+     is open. dim_date's range is fixed rather than derived, and
+     assert_dim_date_covers_every_fact_date catches a fact outside it; its
+     attributes use extract() and case only, leaving out day of week and
+     ISO week, which DuckDB and Snowflake spell differently.
+Verified: current versions reproduce S29's specialty counts (pulmonology
+     1,208, of which 1,043 pulmonary disease; cardiology 501; advanced
+     practice 380; primary care 67; unspecified 30; unknown 19; pediatrics
+     18; other 16). With one NPPES batch every version spans all time.
+     dim_drug: 2 oral, 4 inhaled, 6 parenteral, 1 accessory. Every fact
+     date (claims 2013 to 2024, patients and events 2019 to 2023) is in
+     dim_date.
+Finding: dim_drug has 12 rows where the Databricks build had 8 drugs. The
+     grain moved from normalised brand to stored pair (ADR-022). For the
+     migration write-up.
+Mutations: each run alone behind git diff --stat. A first version that
+     does not reach back failed cover-all-time (2,239) and the unit test
+     (both first versions); mutually_exclusive_ranges passed, since the
+     ranges still meet end to end. The covariate moved to 207RC0200X failed
+     the cross-check (1,197, S29's 1,043 plus 154) and the unit test (all
+     three versions of 1000000001). dim_date from 2014 failed the coverage
+     test (2: 2013-01-01 and 2013-12-31). drug_key from brand alone failed
+     unique (1: Veletri). All as predicted.
+Tooling: the S31 commit was the first to stage more than four lintable
+     SQL files (six; three was the most before). pre-commit split the
+     sqlfluff hook into two parallel processes, both dbt templaters opened
+     data/warehouse.duckdb, and DuckDB allows one writer, so one failed on
+     the file lock. require_serial: true on the hook keeps it to one
+     process, which also compiles the project once instead of twice.
+Next: plan S32, fct_claims: incremental with merge on the claim's natural
+      key and a lookback window, provider_key and drug_key, CMS's per-year
+      prescriber type and state (ADR-023), the backfill flag, and which
+      date a data year joins on.
