@@ -1122,3 +1122,39 @@ Next: plan S32, fct_claims: incremental with merge on the claim's natural
       key and a lookback window, provider_key and drug_key, CMS's per-year
       prescriber type and state (ADR-023), the backfill flag, and which
       date a data year joins on.
+
+## S32 - 2026-11-26
+Did: plan S32, the claims fact. fct_claims: incremental, delete+insert on
+     data_year, loading a release year only when staging holds a batch for
+     it that the fact has not loaded (ADR-024); the provider version in
+     effect on data_year_end, the last day of the data year; the drug by
+     exact pair; CMS's type and state for the year kept; _loaded_at from
+     run_started_at. assert_fct_claims_matches_staging compares the fact
+     with staging on grain, batch and row hash. Two unit tests: the as-at
+     join, and which years an incremental run loads. 147 data tests, 8
+     unit tests. Commit c0db1ad.
+Decided: ADR-024. Amends the spec's merge and lookback window: a merge
+     keeps a row a restatement dropped (ADR-021's reason, applied to the
+     fact), and comparing batch ids is exact where a lookback estimates.
+     S33's events are where a merge and a lookback fit.
+Recon: one batch per year, 2013 to 2024. Rows grow from 25 (344 claims)
+     in 2013 to 2,076 (84,146) in 2024; 2022 has more rows than 2021 but
+     fewer claims (44,486 against 46,700).
+Verified: 10,871 rows and keys, 398,062 claims, 12 years, 12 batches,
+     2,239 providers, 12 drugs, every row backfilled, 0 invalid NPIs,
+     10,177 suppressed beneficiary counts, one _loaded_at.
+Drill: a rerun loaded nothing. 2019 faked as restated (981 rows on a
+     superseded batch plus one row the release no longer has) failed the
+     staging check with 982; the next run replaced 2019 whole and the
+     check passed, with only 2019 reloaded.
+Mutations: each alone behind git diff --stat. As at the first day of the
+     year: the as-at unit test failed (2019 backfilled, 2020 on the
+     earlier version), and no data test can see it. Incremental filter
+     dropped: the other unit test failed (2018 and 2019 came through). The
+     spec's merge against the same restatement: the staging check failed
+     with 1, the dropped row kept; a delete+insert run afterwards left it,
+     since the merge had already rewritten 2019's batch ids, and only
+     --full-refresh removed it. All as predicted.
+Next: plan S33, fct_patient_events: incremental on events, which do
+      arrive late; ADR-018's watermark-on-arrival point decides what the
+      lookback reads.
