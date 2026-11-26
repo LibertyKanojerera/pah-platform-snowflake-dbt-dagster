@@ -25,6 +25,7 @@ repos:
       - id: sqlfluff-lint
         name: sqlfluff-lint
         entry: uv run sqlfluff lint
+        require_serial: true
         language: system
         files: ^transform/(models|tests)/.*\.sql$
         pass_filenames: true
