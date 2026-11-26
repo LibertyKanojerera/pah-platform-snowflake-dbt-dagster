@@ -1,0 +1,53 @@
+version: 2
+
+unit_tests:
+  - name: dim_provider_ranges_and_specialty_per_version
+    description: >
+      Two NPIs with real history. 1000000001 moves from pulmonary disease to
+      critical care and back: its first version reaches back to 1900, its
+      middle version keeps the observed range, its current version reaches
+      forward to 9999, and is_pulmonary_disease follows the taxonomy while
+      the category stays pulmonology. 1000000003 is found as cardiology and
+      then missed: the miss is unknown.
+    model: dim_provider
+    given:
+      - input: ref('int_providers__history')
+        format: sql
+        rows: |
+          select
+              v.npi,
+              v.version_number,
+              v.nppes_found,
+              v.taxonomy_code,
+              v.location_state,
+              v.location_postal_code,
+              cast(v.valid_from as timestamp with time zone) as valid_from,
+              cast(v.valid_to as timestamp with time zone) as valid_to
+          from (
+              values
+                  ('1000000001', 1, true, '207RP1001X', 'MA', '02115', '2026-01-01 00:00:00+00', '2026-03-01 00:00:00+00'),
+                  ('1000000001', 2, true, '207RC0200X', 'MA', '02115', '2026-03-01 00:00:00+00', '2026-04-01 00:00:00+00'),
+                  ('1000000001', 3, true, '207RP1001X', 'MA', '02115', '2026-04-01 00:00:00+00', null),
+                  ('1000000003', 1, true, '207RC0000X', 'NY', '10001', '2026-01-01 00:00:00+00', '2026-02-01 00:00:00+00'),
+                  ('1000000003', 2, false, null, null, null, '2026-02-01 00:00:00+00', null)
+          ) as v (npi, version_number, nppes_found, taxonomy_code, location_state, location_postal_code, valid_from, valid_to)
+      - input: ref('specialty_category_map')
+        format: sql
+        rows: |
+          select
+              v.taxonomy_code,
+              v.taxonomy_desc,
+              v.specialty_category
+          from (
+              values
+                  ('207RP1001X', 'Internal Medicine, Pulmonary Disease', 'pulmonology'),
+                  ('207RC0200X', 'Internal Medicine, Critical Care Medicine', 'pulmonology'),
+                  ('207RC0000X', 'Internal Medicine, Cardiovascular Disease', 'cardiology')
+          ) as v (taxonomy_code, taxonomy_desc, specialty_category)
+    expect:
+      rows:
+        - {npi: "1000000001", version_number: 1, specialty_category: pulmonology, is_pulmonary_disease: true, is_current: false, effective_from: "1900-01-01 00:00:00+00", effective_to: "2026-03-01 00:00:00+00"}
+        - {npi: "1000000001", version_number: 2, specialty_category: pulmonology, is_pulmonary_disease: false, is_current: false, effective_from: "2026-03-01 00:00:00+00", effective_to: "2026-04-01 00:00:00+00"}
+        - {npi: "1000000001", version_number: 3, specialty_category: pulmonology, is_pulmonary_disease: true, is_current: true, effective_from: "2026-04-01 00:00:00+00", effective_to: "9999-12-31 00:00:00+00"}
+        - {npi: "1000000003", version_number: 1, specialty_category: cardiology, is_pulmonary_disease: false, is_current: false, effective_from: "1900-01-01 00:00:00+00", effective_to: "2026-02-01 00:00:00+00"}
+        - {npi: "1000000003", version_number: 2, specialty_category: unknown, is_pulmonary_disease: false, is_current: true, effective_from: "2026-02-01 00:00:00+00", effective_to: "9999-12-31 00:00:00+00"}

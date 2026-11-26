@@ -1,0 +1,75 @@
+version: 2
+
+models:
+  - name: dim_date
+    description: >
+      One row per calendar day, 2013-01-01 to 2026-12-31. The range is
+      fixed; assert_dim_date_covers_every_fact_date fails when a fact date
+      falls outside it.
+    columns:
+      - name: date_day
+        description: The calendar day, and the key.
+        data_tests: [not_null, unique]
+
+  - name: dim_drug
+    description: >
+      One row per (generic, brand) pair CMS reports, with the molecule,
+      route and product type drug_vocabulary assigns it (ADR-022). Neither
+      string alone is a key: Veletri appears under two generic strings.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [generic_name, brand_name]
+    columns:
+      - name: drug_key
+        description: Surrogate key, a hash of the generic and brand strings.
+        data_tests: [not_null, unique]
+      - name: molecule
+        data_tests: [not_null]
+      - name: route
+        data_tests: [not_null]
+      - name: product_type
+        description: drug, or accessory (left out where claims are counted, plan S34).
+        data_tests: [not_null]
+
+  - name: dim_provider
+    description: >
+      Provider dimension, SCD2: one row per version from
+      int_providers__history (ADR-023), with specialty_category and
+      is_pulmonary_disease resolved per version. Facts join on
+      effective_from and effective_to, which cover all time for every
+      provider; valid_from and valid_to keep what was observed.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [npi, version_number]
+      - dbt_utils.mutually_exclusive_ranges:
+          arguments:
+            lower_bound_column: effective_from
+            upper_bound_column: effective_to
+            partition_by: npi
+            gaps: not_allowed
+    columns:
+      - name: provider_key
+        description: Surrogate key for the version, a hash of npi and version_number.
+        data_tests: [not_null, unique]
+      - name: npi
+        data_tests: [not_null]
+      - name: nppes_found
+        data_tests: [not_null]
+      - name: specialty_category
+        description: Research question one's grouping for this version; unknown when NPPES did not find the NPI.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [pulmonology, cardiology, advanced_practice, primary_care, pediatrics, unspecified, other, unknown]
+      - name: is_pulmonary_disease
+        description: Research question two's covariate for this version, primary taxonomy 207RP1001X.
+        data_tests: [not_null]
+      - name: is_current
+        data_tests: [not_null]
+      - name: effective_from
+        data_tests: [not_null]
+      - name: effective_to
+        data_tests: [not_null]
