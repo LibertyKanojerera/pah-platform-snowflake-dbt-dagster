@@ -51,3 +51,126 @@ unit_tests:
         - {npi: "1000000001", version_number: 3, specialty_category: pulmonology, is_pulmonary_disease: true, is_current: true, effective_from: "2026-04-01 00:00:00+00", effective_to: "9999-12-31 00:00:00+00"}
         - {npi: "1000000003", version_number: 1, specialty_category: cardiology, is_pulmonary_disease: false, is_current: false, effective_from: "1900-01-01 00:00:00+00", effective_to: "2026-02-01 00:00:00+00"}
         - {npi: "1000000003", version_number: 2, specialty_category: unknown, is_pulmonary_disease: false, is_current: true, effective_from: "2026-02-01 00:00:00+00", effective_to: "9999-12-31 00:00:00+00"}
+
+  - name: fct_claims_provider_as_at_year_end
+    description: >
+      1000000001 has two versions: the first was observed from 2019-03-01,
+      the second takes effect on 2020-06-01. Joined as at the last day of
+      each data year, 2018 and 2019 take the first version (2018 is
+      backfilled, 2019 is not) and 2020 takes the second. A join as at the
+      first day of the year would give 2020 the first version and call 2019
+      backfilled. 1000000003 has one version, first observed in 2026, so its
+      2021 claim is backfilled.
+    model: fct_claims
+    overrides:
+      macros:
+        is_incremental: false
+    given:
+      - input: ref('int_claims__npi_validated')
+        format: sql
+        rows: &fct_claims_staged_rows |
+          select
+              v.prescriber_npi,
+              v.generic_name,
+              v.brand_name,
+              v.data_year,
+              true as is_npi_valid,
+              'Pulmonary Disease' as cms_prescriber_type,
+              'MA' as prescriber_state,
+              20 as total_claims,
+              cast(20 as decimal(18, 2)) as total_30day_fills,
+              600 as total_day_supply,
+              cast(1000 as decimal(18, 2)) as total_drug_cost,
+              cast(null as integer) as total_beneficiaries,
+              true as is_beneficiaries_suppressed,
+              cast(null as varchar) as ge65_suppression_flag,
+              cast(null as integer) as ge65_total_claims,
+              cast(null as decimal(18, 2)) as ge65_total_30day_fills,
+              cast(null as integer) as ge65_total_day_supply,
+              cast(null as decimal(18, 2)) as ge65_total_drug_cost,
+              cast(null as varchar) as ge65_beneficiaries_suppression_flag,
+              cast(null as integer) as ge65_total_beneficiaries,
+              'dataset' as _cms_dataset_uuid,
+              'cms_part_d' as _source,
+              v._batch_id,
+              'part-0000.parquet' as _file_name,
+              cast('2026-11-11 00:00:00+00' as timestamp with time zone) as _ingested_at,
+              cast('2026-11-11 00:00:00+00' as timestamp with time zone) as _extracted_at,
+              v._batch_id || v.prescriber_npi as _source_row_hash
+          from (
+              values
+                  ('1000000001', 'Treprostinil', 'Remodulin', 2018, 'b2018'),
+                  ('1000000001', 'Treprostinil', 'Remodulin', 2019, 'b2019'),
+                  ('1000000001', 'Treprostinil', 'Remodulin', 2020, 'b2020'),
+                  ('1000000003', 'Selexipag', 'Uptravi', 2021, 'b2021')
+          ) as v (prescriber_npi, generic_name, brand_name, data_year, _batch_id)
+      - input: ref('dim_provider')
+        format: sql
+        rows: &fct_claims_providers |
+          select
+              v.provider_key,
+              v.npi,
+              cast(v.valid_from as timestamp with time zone) as valid_from,
+              cast(v.effective_from as timestamp with time zone) as effective_from,
+              cast(v.effective_to as timestamp with time zone) as effective_to
+          from (
+              values
+                  ('p1', '1000000001', '2019-03-01 00:00:00+00', '1900-01-01 00:00:00+00', '2020-06-01 00:00:00+00'),
+                  ('p2', '1000000001', '2020-06-01 00:00:00+00', '2020-06-01 00:00:00+00', '9999-12-31 00:00:00+00'),
+                  ('p3', '1000000003', '2026-11-08 00:00:00+00', '1900-01-01 00:00:00+00', '9999-12-31 00:00:00+00')
+          ) as v (provider_key, npi, valid_from, effective_from, effective_to)
+      - input: ref('dim_drug')
+        format: sql
+        rows: &fct_claims_drugs |
+          select
+              v.drug_key,
+              v.generic_name,
+              v.brand_name
+          from (
+              values
+                  ('d1', 'Treprostinil', 'Remodulin'),
+                  ('d2', 'Selexipag', 'Uptravi')
+          ) as v (drug_key, generic_name, brand_name)
+    expect:
+      rows:
+        - {prescriber_npi: "1000000001", data_year: 2018, provider_key: p1, drug_key: d1, is_provider_backfilled: true}
+        - {prescriber_npi: "1000000001", data_year: 2019, provider_key: p1, drug_key: d1, is_provider_backfilled: false}
+        - {prescriber_npi: "1000000001", data_year: 2020, provider_key: p2, drug_key: d1, is_provider_backfilled: false}
+        - {prescriber_npi: "1000000003", data_year: 2021, provider_key: p3, drug_key: d2, is_provider_backfilled: true}
+
+  - name: fct_claims_incremental_loads_only_new_batches
+    description: >
+      An incremental run, with the fact already holding 2018 and 2019 from
+      the batches staging still holds and 2020 from an older batch. Only
+      2020 (restated) and 2021 (new) come through to be loaded; 2018 and
+      2019 are not touched.
+    model: fct_claims
+    overrides:
+      macros:
+        is_incremental: true
+    given:
+      - input: ref('int_claims__npi_validated')
+        format: sql
+        rows: *fct_claims_staged_rows
+      - input: ref('dim_provider')
+        format: sql
+        rows: *fct_claims_providers
+      - input: ref('dim_drug')
+        format: sql
+        rows: *fct_claims_drugs
+      - input: this
+        format: sql
+        rows: |
+          select
+              v.data_year,
+              v._batch_id
+          from (
+              values
+                  (2018, 'b2018'),
+                  (2019, 'b2019'),
+                  (2020, 'b2020-superseded')
+          ) as v (data_year, _batch_id)
+    expect:
+      rows:
+        - {prescriber_npi: "1000000001", data_year: 2020, _batch_id: b2020}
+        - {prescriber_npi: "1000000003", data_year: 2021, _batch_id: b2021}

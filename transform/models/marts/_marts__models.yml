@@ -73,3 +73,56 @@ models:
         data_tests: [not_null]
       - name: effective_to
         data_tests: [not_null]
+
+  - name: fct_claims
+    description: >
+      Claims fact: one row per prescriber, generic, brand and data year, as
+      CMS reports it. Incremental by release year with delete+insert
+      (ADR-024): a year loads only when staging holds a new batch for it,
+      and then replaces the year whole. provider_key is the dim_provider
+      version in effect on data_year_end, the last day of the data year;
+      is_provider_backfilled says that version was first observed after
+      it. assert_fct_claims_matches_staging holds the fact to staging row
+      for row.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [prescriber_npi, generic_name, brand_name, data_year]
+    columns:
+      - name: claim_key
+        description: Surrogate key, a hash of the grain.
+        data_tests: [not_null, unique]
+      - name: provider_key
+        description: The dim_provider version in effect on data_year_end.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_provider')
+                field: provider_key
+      - name: drug_key
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_drug')
+                field: drug_key
+      - name: data_year_end
+        description: The last day of the data year, the date the provider is joined as at.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: is_npi_valid
+        data_tests: [not_null]
+      - name: is_provider_backfilled
+        description: True when the joined provider version was first observed after data_year_end (ADR-023).
+        data_tests: [not_null]
+      - name: _batch_id
+        description: The landed CMS batch the row came from; the incremental load compares it with staging.
+        data_tests: [not_null]
+      - name: _loaded_at
+        description: When the row's release year last loaded (dbt's run_started_at).
+        data_tests: [not_null]
